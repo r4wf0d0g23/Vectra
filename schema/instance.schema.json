@@ -1,0 +1,100 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "VectraInstance",
+  "description": "Instance configuration for a Vectra deployment. Covers the ~40% of instance config that ATP protocols do not handle: transport, identity, operational tuning, model routing, and failover.",
+  "type": "object",
+  "required": ["instanceId", "atpPath", "models", "transport"],
+  "properties": {
+    "instanceId": {
+      "type": "string",
+      "description": "Unique instance identifier (e.g. reality-anchor, my-agent)"
+    },
+    "atpPath": {
+      "type": "string",
+      "description": "Absolute path to ATP instance directory"
+    },
+    "models": {
+      "type": "object",
+      "description": "Role-to-model assignment. Maps agent roles to concrete provider/model strings.",
+      "properties": {
+        "mainAgent": {
+          "type": "string",
+          "description": "Primary captain model (handles main session turns)"
+        },
+        "t1": {
+          "type": "string",
+          "description": "T1 scanner model (fast/cheap, drift detection)"
+        },
+        "t2": {
+          "type": "string",
+          "description": "T2 watcher model (balanced, correction application)"
+        },
+        "t3": {
+          "type": "string",
+          "description": "T3 validator model (capable, deep analysis and escalations)"
+        },
+        "fallback": {
+          "type": "string",
+          "description": "Fallback model when primary is unavailable"
+        }
+      },
+      "required": ["mainAgent", "t1", "t2", "t3"],
+      "additionalProperties": {
+        "type": "string",
+        "description": "Additional role-to-model assignments for custom roles"
+      }
+    },
+    "transport": {
+      "type": "object",
+      "description": "Channel transport configuration",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["discord", "signal", "webhook", "cli"],
+          "description": "Transport connector type"
+        },
+        "config": {
+          "type": "object",
+          "description": "Transport-specific config (tokens, guild IDs, channel mappings, etc.)"
+        }
+      },
+      "required": ["type", "config"]
+    },
+    "autonomyLevel": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 5,
+      "description": "Autonomy level: 0=fully supervised, 4=bounded autonomous, 5=fully event-driven"
+    },
+    "costCeiling": {
+      "type": "number",
+      "description": "Max cost per task chain in USD before halt"
+    },
+    "timeoutMultiplier": {
+      "type": "number",
+      "description": "Global timeout multiplier applied to all protocol step durations"
+    },
+    "maxRecursionDepth": {
+      "type": "integer",
+      "description": "Max sub-agent recursion depth before hard stop"
+    },
+    "captainTwo": {
+      "type": "object",
+      "description": "Active/standby failover config (optional)",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "standbyEndpoint": {
+          "type": "string",
+          "description": "URL of the standby captain's Vectra proxy"
+        },
+        "heartbeatIntervalMs": {
+          "type": "integer",
+          "description": "Interval between heartbeat probes in milliseconds"
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -10,6 +10,7 @@
  */
 
 import type { JobEnvelope, ModelClass, ProtocolId, TaskClass, ToolName } from './job.js';
+// Note: ProtocolId, TaskClass, ToolName, ModelClass are all 'string' at the harness level.
 import { MODEL_CLASS_ORDER } from './job.js';
 import type { RoutingMatch } from '../atp/matcher.js';
 
@@ -28,23 +29,23 @@ export interface DispatchResult {
   rejectionReason: string | null;
 }
 
-// ─── Protocol-to-TaskClass Mapping ──────────────────────────────────
-
-const PROTOCOL_TASK_CLASS: Record<string, TaskClass> = {
-  'orchestration-main': 'orchestration',
-  'openclaw-config-change': 'config-ops',
-  'dgx-inference-ops': 'inference-ops',
-  'crew-ops': 'crew-comms',
-  'crew-peering': 'crew-comms',
-  'cradleos-deploy': 'deploy-ops',
-  'memory-maintenance': 'memory-ops',
-  'atp-protocol-review': 'orchestration',
-  'conversational': 'conversational',
-};
-
 // ─── Dispatcher ─────────────────────────────────────────────────────
 
 export class Dispatcher {
+  /**
+   * Protocol-to-TaskClass mapping loaded from instance config at runtime.
+   * Keys are protocol IDs; values are task class strings.
+   * Falls back to 'conversational' for any unknown protocol.
+   *
+   * Populate this from the instance's ATP data or vectra.instance.json
+   * rather than hardcoding instance-specific protocol IDs here.
+   */
+  private readonly protocolTaskClassMap: Record<string, string>;
+
+  constructor(protocolTaskClassMap: Record<string, string> = {}) {
+    this.protocolTaskClassMap = protocolTaskClassMap;
+  }
+
   /**
    * Select the best protocol match for a job.
    *
@@ -102,7 +103,9 @@ export class Dispatcher {
     // Step 4: Take the winner
     const winner = scored[0].match;
 
-    const taskClass = PROTOCOL_TASK_CLASS[winner.protocolId] ?? 'conversational';
+    // Resolve task class from runtime-loaded map; fall back to 'conversational'
+    const taskClass: TaskClass =
+      this.protocolTaskClassMap[winner.protocolId] ?? 'conversational';
 
     return {
       matched: true,
@@ -110,7 +113,7 @@ export class Dispatcher {
       taskClass,
       varIds: winner.varIds,
       modelClass: winner.modelClass as ModelClass,
-      toolAllowlist: (winner.toolAllowlist ?? []) as ToolName[],
+      toolAllowlist: winner.toolAllowlist ?? [],
       guardrails: winner.guardrails ?? [],
       priority: winner.priority ?? 0,
       rejectionReason: null,
@@ -135,8 +138,11 @@ export class Dispatcher {
 
   /**
    * Validate that a model class meets or exceeds the protocol requirement.
+   * Uses MODEL_CLASS_ORDER for built-in tiers; unknown tiers default to 0.
    */
   validateModelClass(assigned: ModelClass, required: ModelClass): boolean {
-    return MODEL_CLASS_ORDER[assigned] >= MODEL_CLASS_ORDER[required];
+    const assignedOrder = MODEL_CLASS_ORDER[assigned] ?? 0;
+    const requiredOrder = MODEL_CLASS_ORDER[required] ?? 0;
+    return assignedOrder >= requiredOrder;
   }
 }

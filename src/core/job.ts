@@ -23,56 +23,50 @@ export const SOURCE_TRUST: Record<JobSource, TrustLevel> = {
 
 // ─── Task Classification ────────────────────────────────────────────
 
-/** The bounded task families Vectra can route. */
-export type TaskClass =
-  | 'orchestration'
-  | 'config-ops'
-  | 'inference-ops'
-  | 'crew-comms'
-  | 'deploy-ops'
-  | 'memory-ops'
-  | 'conversational';
+/**
+ * Task family identifier — generic string at the harness level.
+ * Valid task classes are defined by the instance's ATP routing configuration,
+ * not by the harness. Examples: 'orchestration', 'config-ops', 'conversational'.
+ */
+export type TaskClass = string;
 
-/** ATP protocol IDs that map to task classes. */
-export type ProtocolId =
-  | 'orchestration-main'
-  | 'openclaw-config-change'
-  | 'dgx-inference-ops'
-  | 'crew-ops'
-  | 'crew-peering'
-  | 'cradleos-deploy'
-  | 'memory-maintenance'
-  | 'atp-protocol-review'
-  | 'conversational';
+/**
+ * ATP protocol identifier — generic string at the harness level.
+ * Valid protocol IDs are loaded at runtime from the instance's ATP directory.
+ * Examples: 'orchestration-main', 'conversational'.
+ */
+export type ProtocolId = string;
 
 // ─── Model Classification ───────────────────────────────────────────
 
-/** Model class determines compute tier. Ordered: fast < agent < balanced < capable. */
-export type ModelClass = 'fast' | 'agent' | 'balanced' | 'capable';
+/**
+ * Model tier identifier — generic string at the harness level.
+ * Instances map tier names to concrete provider/model strings in instance config.
+ * Built-in defaults: 'fast', 'agent', 'balanced', 'capable'.
+ */
+export type ModelClass = string;
 
-export const MODEL_CLASS_ORDER: Record<ModelClass, number> = {
+/**
+ * Default tier ordering for built-in model classes.
+ * Operators may extend this via instance config for custom tier names.
+ * Higher number = more capable / more expensive.
+ */
+export const MODEL_CLASS_ORDER: Record<string, number> = {
   fast: 0,
   agent: 1,
   balanced: 2,
   capable: 3,
-} as const;
+};
 
 // ─── Tool Scope ─────────────────────────────────────────────────────
 
-/** Tools the harness can authorize for a job. */
-export type ToolName =
-  | 'read'
-  | 'write'
-  | 'edit'
-  | 'exec'
-  | 'memory_search'
-  | 'memory_get'
-  | 'web_search'
-  | 'web_fetch'
-  | 'message'
-  | 'browser'
-  | 'image'
-  | 'sessions_spawn';
+/**
+ * Tool name — generic string at the harness level.
+ * The valid tool set is determined by the runtime and the instance's ATP
+ * tool_allowlist fields, not by a compiled-in union.
+ * Examples: 'read', 'write', 'exec', 'memory_search', 'sessions_spawn'.
+ */
+export type ToolName = string;
 
 /** Impact classification for tools. */
 export type ToolImpact = 'read-only' | 'write-capable' | 'destructive' | 'privileged';
@@ -337,7 +331,7 @@ export function createJobEnvelope(params: {
     parentJobId: params.parentJobId ?? null,
     recursionDepth: params.recursionDepth ?? 0,
 
-    // Set at admission
+    // Set at admission — defaults to conversational until dispatcher binds a protocol
     protocolId: 'conversational',
     taskClass: 'conversational',
     varIds: [],
