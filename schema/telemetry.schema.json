@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/r4wf0d0g23/Vectra/schema/telemetry.schema.json",
+  "title": "Vectra Telemetry Record",
+  "description": "Structured telemetry event emitted during job lifecycle.",
+  "type": "object",
+  "required": ["type", "timestamp", "jobId", "protocolId", "payload"],
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": [
+        "job.created", "job.admitted", "job.prepared", "job.planning",
+        "job.executing", "job.blocked", "job.verifying", "job.completed",
+        "job.failed", "job.halted", "job.archived",
+        "gate.intake.pass", "gate.intake.hold",
+        "gate.bundle.pass", "gate.bundle.fail",
+        "gate.approval.auto", "gate.approval.blocked",
+        "gate.receipt.pass", "gate.receipt.fail",
+        "checkpoint.saved", "tool.called", "tool.completed",
+        "escalation.triggered", "stop.condition"
+      ]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "jobId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "protocolId": {
+      "type": ["string", "null"]
+    },
+    "payload": {
+      "type": "object",
+      "description": "Event-specific structured data"
+    }
+  },
+  "additionalProperties": false
+}

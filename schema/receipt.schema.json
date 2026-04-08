@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/r4wf0d0g23/Vectra/schema/receipt.schema.json",
+  "title": "Vectra Handoff Artifact (Execution Receipt)",
+  "description": "Schema for handoff artifacts produced by sub-agents. Matches the ATP handoff-artifact spec.",
+  "type": "object",
+  "required": [
+    "bundle_id",
+    "protocol_id",
+    "completed_at",
+    "changes",
+    "var_updates",
+    "next_action",
+    "state_after"
+  ],
+  "properties": {
+    "bundle_id": {
+      "type": "string",
+      "description": "Unique bundle identifier linking this receipt to the spawned job"
+    },
+    "protocol_id": {
+      "type": "string",
+      "description": "ATP protocol that governed this execution"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of completion"
+    },
+    "changes": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "List of changes made during execution"
+    },
+    "var_updates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "var_id": { "type": "string" },
+          "field": { "type": "string" },
+          "old_value": { "type": "string" },
+          "new_value": { "type": "string" }
+        }
+      },
+      "description": "Variable file updates resulting from execution"
+    },
+    "next_action": {
+      "type": "string",
+      "description": "Recommended next action after this job"
+    },
+    "state_after": {
+      "type": "object",
+      "description": "Snapshot of relevant state after execution"
+    }
+  },
+  "additionalProperties": true
+}

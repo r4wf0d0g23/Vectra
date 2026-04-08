@@ -1,0 +1,29 @@
+{
+  "name": "@vectra/harness",
+  "version": "0.1.0",
+  "description": "ATP-native agentic execution harness for Reality Anchor",
+  "type": "module",
+  "main": "dist/src/core/job.js",
+  "types": "dist/src/core/job.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "check": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "atp",
+    "agentic",
+    "harness",
+    "execution",
+    "vectra"
+  ],
+  "author": "Reality Anchor",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.2",
+    "typescript": "^5.9.3"
+  }
+}

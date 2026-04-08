@@ -1,0 +1,220 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/r4wf0d0g23/Vectra/schema/job.schema.json",
+  "title": "Vectra Job Envelope",
+  "description": "The fundamental unit of work in the Vectra harness. Carries all metadata for dispatch, execution, verification, and audit.",
+  "type": "object",
+  "required": [
+    "id",
+    "description",
+    "createdAt",
+    "updatedAt",
+    "state",
+    "stateHistory",
+    "source",
+    "trustLevel",
+    "originatorId",
+    "parentJobId",
+    "recursionDepth",
+    "protocolId",
+    "taskClass",
+    "varIds",
+    "modelClass",
+    "toolAllowlist",
+    "guardrails",
+    "budget",
+    "context",
+    "bundleId",
+    "approvalPolicy",
+    "verificationPolicy",
+    "escalationRules",
+    "checkpoints",
+    "toolCalls",
+    "artifactPath",
+    "failureReason",
+    "haltCondition",
+    "varUpdates",
+    "estimatedCostUsd",
+    "elapsedMs",
+    "toolCallCount"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique job identifier (UUID v4)"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable job description"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "state": {
+      "type": "string",
+      "enum": ["queued", "admitted", "prepared", "planning", "executing", "blocked", "verifying", "completed", "failed", "halted", "archived"]
+    },
+    "stateHistory": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["from", "to", "timestamp", "reason"],
+        "properties": {
+          "from": { "type": "string" },
+          "to": { "type": "string" },
+          "timestamp": { "type": "string", "format": "date-time" },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "source": {
+      "type": "string",
+      "enum": ["human", "cron", "subagent-completion", "webhook"]
+    },
+    "trustLevel": {
+      "type": "string",
+      "enum": ["highest", "high", "medium", "lowest"]
+    },
+    "originatorId": {
+      "type": "string"
+    },
+    "parentJobId": {
+      "type": ["string", "null"]
+    },
+    "recursionDepth": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "protocolId": {
+      "type": "string"
+    },
+    "taskClass": {
+      "type": "string",
+      "enum": ["orchestration", "config-ops", "inference-ops", "crew-comms", "deploy-ops", "memory-ops", "conversational"]
+    },
+    "varIds": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "modelClass": {
+      "type": "string",
+      "enum": ["fast", "agent", "balanced", "capable"]
+    },
+    "toolAllowlist": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "guardrails": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "budget": {
+      "type": "object",
+      "required": ["timeoutMs", "maxCostUsd", "maxRecursionDepth", "maxToolCalls"],
+      "properties": {
+        "timeoutMs": { "type": "integer", "minimum": 0 },
+        "maxCostUsd": { "type": "number", "minimum": 0 },
+        "maxRecursionDepth": { "type": "integer", "minimum": 0 },
+        "maxToolCalls": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "context": {
+      "type": "object",
+      "required": ["static", "task", "working", "persistent", "retrieval"],
+      "properties": {
+        "static": { "type": "array", "items": { "type": "string" } },
+        "task": { "type": "array", "items": { "type": "string" } },
+        "working": { "type": "array", "items": { "type": "string" } },
+        "persistent": { "type": "array", "items": { "type": "string" } },
+        "retrieval": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "bundleId": {
+      "type": "string"
+    },
+    "approvalPolicy": {
+      "type": "string",
+      "enum": ["auto", "require-t3", "require-human", "never"]
+    },
+    "verificationPolicy": {
+      "type": "object",
+      "required": ["selfVerify", "requireReceipt", "t2Scan", "runVerifyCmd"],
+      "properties": {
+        "selfVerify": { "type": "boolean", "const": false },
+        "requireReceipt": { "type": "boolean" },
+        "t2Scan": { "type": "boolean" },
+        "runVerifyCmd": { "type": "boolean" }
+      }
+    },
+    "escalationRules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["condition", "target", "maxRetries", "fallback"],
+        "properties": {
+          "condition": { "type": "string" },
+          "target": { "type": "string", "enum": ["t3", "human", "retry"] },
+          "maxRetries": { "type": "integer", "minimum": 0 },
+          "fallback": { "type": "string", "enum": ["t3", "human"] }
+        }
+      }
+    },
+    "checkpoints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "createdAt", "state", "toolCallsCompleted", "elapsedMs", "notes"],
+        "properties": {
+          "id": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "state": { "type": "string" },
+          "toolCallsCompleted": { "type": "integer" },
+          "elapsedMs": { "type": "integer" },
+          "notes": { "type": "string" }
+        }
+      }
+    },
+    "toolCalls": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["tool", "timestamp", "durationMs", "success"],
+        "properties": {
+          "tool": { "type": "string" },
+          "timestamp": { "type": "string", "format": "date-time" },
+          "durationMs": { "type": "integer" },
+          "success": { "type": "boolean" },
+          "checkpointBefore": { "type": ["string", "null"] },
+          "checkpointAfter": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "artifactPath": { "type": ["string", "null"] },
+    "failureReason": { "type": ["string", "null"] },
+    "haltCondition": { "type": ["string", "null"] },
+    "varUpdates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["varId", "field", "oldValue", "newValue"],
+        "properties": {
+          "varId": { "type": "string" },
+          "field": { "type": "string" },
+          "oldValue": { "type": "string" },
+          "newValue": { "type": "string" }
+        }
+      }
+    },
+    "estimatedCostUsd": { "type": "number", "minimum": 0 },
+    "elapsedMs": { "type": "integer", "minimum": 0 },
+    "toolCallCount": { "type": "integer", "minimum": 0 }
+  },
+  "additionalProperties": false
+}
