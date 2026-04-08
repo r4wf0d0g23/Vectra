@@ -1,7 +1,8 @@
 /**
  * Vectra Dispatch Matcher — pattern match logic for ATP routing.
  *
- * Generalized from the atp-enforcement plugin's dispatch.ts concept.
+ * Evolved from the atp-enforcement dispatch concept (now superseded).
+ * Vectra owns dispatch as a transport interceptor — not an OpenClaw plugin.
  * Matches normalized task descriptions against protocol routing patterns
  * using substring matching with priority ordering.
  */

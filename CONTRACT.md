@@ -8,6 +8,29 @@ Vectra answers one question: **what kinds of work should Reality Anchor be trust
 
 The harness owns job lifecycle, dispatch, context injection, verification, telemetry, and escalation. The model owns interpretation, planning, and choosing among allowed actions. This separation is absolute — the model never decides policy, and the harness never decides intent.
 
+## Integration Architecture
+
+Vectra is a **standalone transport interceptor**, not an OpenClaw plugin. It runs as a separate process that sits in the HTTP path between OpenClaw's gateway and the LLM provider.
+
+```
+OpenClaw Gateway (receives message from Discord/Signal)
+  → POST /v1/chat/completions to Vectra proxy (localhost:VECTRA_PORT)
+    → Vectra intake gate → dispatcher → context engine → approval gate
+    → POST /v1/chat/completions to actual model API (OpenAI/Anthropic/xAI)
+    → Vectra receipt gate → telemetry
+  ← Response returned to OpenClaw gateway
+← OpenClaw sends response via transport
+```
+
+OpenClaw exposes an OpenAI-compatible HTTP API (`/v1/chat/completions`). Vectra proxies that same interface:
+
+- **Vectra listens** on a local port, exposing `/v1/chat/completions`
+- **OpenClaw is configured** to use Vectra's port as its model `baseURL`
+- **Vectra forwards** enriched requests to the actual model provider
+- **The `atp-enforcement` plugin becomes obsolete** once Vectra is wired — it is removed, not layered on top
+
+This separation means Vectra can be developed, tested, and deployed independently of OpenClaw's release cycle.
+
 ## Task Classes (Bounded Scope)
 
 | # | Task Class | ATP Protocol | Description |

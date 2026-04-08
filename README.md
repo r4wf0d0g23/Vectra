@@ -22,27 +22,54 @@ Where ATP (Agent Task Protocol) defines *what* protocols govern agent behavior, 
 
 ## Architecture
 
+Vectra is a **transport interceptor** — a standalone process that sits between OpenClaw's wire layer and the model. OpenClaw handles transport (Discord/Signal in/out). Vectra owns everything in between.
+
 ```
-Task Input
+Inbound message (Discord / Signal / HTTP)
   ↓
-┌─────────────────────┐
-│   Intake Gate       │  Pattern match → admit or hold
-├─────────────────────┤
-│   Dispatcher        │  Protocol binding, model class, tool scope
-├─────────────────────┤
-│   Context Engine    │  5-layer composition (static/task/working/persistent/retrieval)
-├─────────────────────┤
-│   Bundle Validator  │  6-rule validation before spawn
-├─────────────────────┤
-│   Approval Gate     │  Policy predicates → auto/t3/human/never
-├─────────────────────┤
-│   State Machine     │  queued → admitted → prepared → planning → executing → verifying → completed
-├─────────────────────┤
-│   Receipt Gate      │  Handoff artifact validation + T2 scan
-├─────────────────────┤
-│   Telemetry         │  JSONL event stream for every lifecycle event
-└─────────────────────┘
+OpenClaw Transport (receive only — wire layer)
+  ↓
+┌─────────────────────────────────────────────┐
+│            VECTRA HARNESS (proxy)            │
+│                                             │
+│  ┌─────────────────────┐                    │
+│  │   Intake Gate       │  Pattern match     │
+│  ├─────────────────────┤                    │
+│  │   Dispatcher        │  Protocol binding  │
+│  ├─────────────────────┤                    │
+│  │   Context Engine    │  5-layer compose   │
+│  ├─────────────────────┤                    │
+│  │   Bundle Validator  │  6-rule validation │
+│  ├─────────────────────┤                    │
+│  │   Approval Gate     │  Policy predicates │
+│  ├─────────────────────┤                    │
+│  │   State Machine     │  Job lifecycle     │
+│  └─────────────────────┘                    │
+│              ↓                              │
+│        Model (plans + executes)             │
+│              ↓                              │
+│  ┌─────────────────────┐                    │
+│  │   Receipt Gate      │  Artifact verify   │
+│  ├─────────────────────┤                    │
+│  │   Telemetry         │  JSONL events      │
+│  └─────────────────────┘                    │
+└─────────────────────────────────────────────┘
+  ↓
+OpenClaw Transport (send response — wire layer)
 ```
+
+### Integration Point
+
+Vectra runs as an HTTP reverse proxy on a local port. OpenClaw's gateway is configured to route model requests through Vectra instead of directly to the LLM provider:
+
+1. OpenClaw receives a message via transport (Discord, Signal, etc.)
+2. OpenClaw's gateway sends the chat completion request to Vectra's proxy endpoint (instead of the LLM API directly)
+3. Vectra's intake gate evaluates the request, dispatcher binds a protocol, context engine composes the bundle
+4. Vectra forwards the enriched request to the actual model endpoint
+5. Vectra's receipt gate validates the response before returning it to OpenClaw
+6. OpenClaw sends the response back through transport
+
+This is achieved by pointing OpenClaw's `agents.defaults.baseURL` (or per-model `baseURL`) at Vectra's proxy port. Vectra is **not** an OpenClaw plugin — it is a separate process that intercepts the model API path.
 
 ## Relationship to ATP
 
@@ -91,6 +118,8 @@ vectra/
       bundle.ts         # 6-rule bundle validation
       approval.ts       # Policy predicate approval gate
       receipt.ts        # Handoff artifact validation
+    transport/
+      proxy.ts          # HTTP reverse proxy (OpenClaw ↔ model interception point)
     telemetry/
       emitter.ts        # JSONL structured event emitter
       counters.ts       # Session-level aggregate counters
@@ -129,7 +158,7 @@ npm run build
 
 1. **Dispatcher + Context Engine** — Wire dispatch flow end-to-end
 2. **Gate Layer** — Connect gates to state machine transitions
-3. **OpenClaw Plugin** — Replace atp-enforcement with Vectra as a native plugin
+3. **Transport Proxy** — Wire Vectra as HTTP interceptor between OpenClaw gateway and model API (replaces atp-enforcement plugin)
 4. **Captain-2 Failover** — Implement checkpoint-based active/standby
 5. **Worker Integration** — Wire T1/T2/T3 to Vectra job lifecycle
 

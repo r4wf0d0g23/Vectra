@@ -50,6 +50,20 @@ export interface VectraConfig {
 
   /** Ops channel for escalation notifications. */
   opsChannel: string;
+
+  // ─── Transport Proxy ────────────────────────────────────────────
+
+  /** Port Vectra's proxy listens on. OpenClaw's baseURL points here. */
+  proxyPort: number;
+
+  /** Upstream model API base URL (the real LLM provider endpoint). */
+  upstreamBaseUrl: string;
+
+  /** OpenClaw gateway URL (for tool invocations via /tools/invoke). */
+  openclawGatewayUrl: string;
+
+  /** OpenClaw gateway auth token (for tool invocations). */
+  openclawGatewayToken: string;
 }
 
 // ─── Default Configuration ──────────────────────────────────────────
@@ -73,6 +87,10 @@ export const DEFAULT_CONFIG: VectraConfig = {
   failoverMissedHeartbeats: 3,
   heartbeatIntervalMs: 30_000,
   opsChannel: 'agent:main:discord:channel:1475311507418910843',
+  proxyPort: 18800,
+  upstreamBaseUrl: 'https://api.anthropic.com',
+  openclawGatewayUrl: 'http://localhost:18789',
+  openclawGatewayToken: '',
 };
 
 /**
