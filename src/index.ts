@@ -26,8 +26,23 @@ const INSTANCE_ID = process.env['VECTRA_INSTANCE_ID'] ?? 'default';
 const DB_PATH = process.env['VECTRA_SESSION_DB'] ?? defaultDbPath(INSTANCE_ID);
 
 // Load instance JSON early (used for providers and scheduler config)
-const _INSTANCE_PATH = process.env['VECTRA_INSTANCE']
-  ?? resolve(import.meta.dirname ?? '.', '../../instances/reality-anchor.instance.json');
+// Auto-discover instance: VECTRA_INSTANCE env > single file in instances/ > error
+import { readdirSync } from 'node:fs';
+function resolveInstancePath(): string {
+  if (process.env['VECTRA_INSTANCE']) return process.env['VECTRA_INSTANCE'];
+  const instancesDir = resolve(import.meta.dirname ?? '.', '../../instances');
+  try {
+    const files = readdirSync(instancesDir).filter(f => f.endsWith('.instance.json'));
+    if (files.length === 1) return resolve(instancesDir, files[0]!);
+    if (files.length > 1) {
+      console.error(`[Vectra] Multiple instances found. Set VECTRA_INSTANCE env var to specify one:\n  ${files.join('\n  ')}`);
+      process.exit(1);
+    }
+  } catch { /* instances dir missing */ }
+  console.error('[Vectra] No instance config found. Run: vectra init');
+  process.exit(1);
+}
+const _INSTANCE_PATH = resolveInstancePath();
 
 interface _BootInstanceShape {
   models?: { mainAgent?: string };
