@@ -1,0 +1,132 @@
+{
+  "runAt": "2026-04-09T23:41:11.204Z",
+  "calibrationPairs": [
+    {
+      "pairId": "nemotron-self",
+      "modelA": "nemotron-embed@dgx",
+      "modelB": "nemotron-embed@dgx",
+      "pairType": "transparent",
+      "expectedRange": {
+        "architectureDistance": "~0",
+        "retrievalOverlapRisk": "~0"
+      },
+      "profile": {
+        "architectureDistance": 0,
+        "retrievalOverlapRisk": 0,
+        "rankingInstabilityRisk": 0,
+        "downstreamAnswerRisk": null,
+        "calibrationConfidence": "pilot",
+        "labeledPairsUsed": 3,
+        "modelA": "nemotron-embed@dgx",
+        "modelB": "nemotron-embed@dgx",
+        "anchorSetVersion": "esp-anchor-v1",
+        "measuredAt": "2026-04-09T23:41:10.302Z",
+        "rawFrobeniusDistance": 0,
+        "fingerprintMagnitudes": {
+          "modelA": 21.71989768015522,
+          "modelB": 21.71989768015522
+        },
+        "retrievalMetrics": {
+          "jaccardAtK3": 1,
+          "kendallTauAtK10": 1,
+          "queriesEvaluated": 15,
+          "corpusChunks": 28
+        },
+        "dimensions": {
+          "modelA": 2048,
+          "modelB": 2048
+        },
+        "operationalVerdict": "transparent",
+        "verdictRationale": "Same-model or identical-family comparison. Retrieval behavior expected to be identical."
+      }
+    },
+    {
+      "pairId": "minilm-self",
+      "modelA": "all-MiniLM-L6-v2@local",
+      "modelB": "all-MiniLM-L6-v2@local",
+      "pairType": "transparent",
+      "expectedRange": {
+        "architectureDistance": "~0",
+        "retrievalOverlapRisk": "~0"
+      },
+      "profile": {
+        "architectureDistance": 0,
+        "retrievalOverlapRisk": 0,
+        "rankingInstabilityRisk": 0,
+        "downstreamAnswerRisk": null,
+        "calibrationConfidence": "pilot",
+        "labeledPairsUsed": 3,
+        "modelA": "all-MiniLM-L6-v2@local",
+        "modelB": "all-MiniLM-L6-v2@local",
+        "anchorSetVersion": "esp-anchor-v1",
+        "measuredAt": "2026-04-09T23:41:11.190Z",
+        "rawFrobeniusDistance": 0,
+        "fingerprintMagnitudes": {
+          "modelA": 23.864532479513983,
+          "modelB": 23.864532479513983
+        },
+        "retrievalMetrics": {
+          "jaccardAtK3": 1,
+          "kendallTauAtK10": 1,
+          "queriesEvaluated": 15,
+          "corpusChunks": 28
+        },
+        "dimensions": {
+          "modelA": 384,
+          "modelB": 384
+        },
+        "operationalVerdict": "transparent",
+        "verdictRationale": "Same-model or identical-family comparison. Retrieval behavior expected to be identical."
+      }
+    },
+    {
+      "pairId": "nemotron-vs-minilm",
+      "modelA": "nemotron-embed@dgx",
+      "modelB": "all-MiniLM-L6-v2@local",
+      "pairType": "cross-family",
+      "expectedRange": {
+        "architectureDistance": "~0.138",
+        "retrievalOverlapRisk": "~0.31"
+      },
+      "profile": {
+        "architectureDistance": 0.13806140686894797,
+        "retrievalOverlapRisk": 0.31332000000000004,
+        "rankingInstabilityRisk": 0.2815954415954416,
+        "downstreamAnswerRisk": null,
+        "calibrationConfidence": "pilot",
+        "labeledPairsUsed": 3,
+        "modelA": "nemotron-embed@dgx",
+        "modelB": "all-MiniLM-L6-v2@local",
+        "anchorSetVersion": "esp-anchor-v1",
+        "measuredAt": "2026-04-09T23:41:11.203Z",
+        "rawFrobeniusDistance": 3.146725279581616,
+        "fingerprintMagnitudes": {
+          "modelA": 21.71989768015522,
+          "modelB": 23.864532479513983
+        },
+        "retrievalMetrics": {
+          "jaccardAtK3": 0.7,
+          "kendallTauAtK10": 0.6667,
+          "queriesEvaluated": 15,
+          "corpusChunks": 28
+        },
+        "dimensions": {
+          "modelA": 2048,
+          "modelB": 384
+        },
+        "operationalVerdict": "caution",
+        "verdictRationale": "Architecturally dissimilar (distance: 0.138), but retrieval overlap is moderate (Jaccard@K3: 0.700). Use with caution, not rejection."
+      }
+    }
+  ],
+  "pearsonR": {
+    "architectureDistance_vs_retrievalOverlapRisk": 1,
+    "n": 3,
+    "interpretation": "strong",
+    "goNoGo": "go"
+  },
+  "summary": {
+    "calibrationConfidence": "pilot",
+    "verdict": "Geometric architecture distance is a strong predictor of retrieval compatibility (r=1.000). The ESP geometric approach is validated as a decision gate."
+  }
+}
