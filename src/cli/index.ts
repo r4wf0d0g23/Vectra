@@ -12,7 +12,52 @@ const command = process.argv[2];
 if (command === 'init') {
   import('./init.js').then((m) => m.init());
 } else if (command === 'start') {
-  import('../index.js');
+  import('../index.js').then(async (m) => {
+    const { createTransport } = await import('../transport/factory.js');
+    const { readFileSync, existsSync, readdirSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    const { config: dotenv } = await import('dotenv');
+    dotenv();
+
+    // Resolve instance path
+    let instancePath = process.env['VECTRA_INSTANCE'];
+    if (!instancePath) {
+      const dir = resolve(process.cwd(), 'instances');
+      const files = readdirSync(dir).map((f: string) => f.trim()).filter((f: string) => f.endsWith('.instance.json'));
+      if (files.length === 1) instancePath = resolve(dir, files[0]!);
+      else { console.error('[vectra] No instance found. Run: vectra init'); process.exit(1); }
+    }
+
+    const instance = JSON.parse(readFileSync(instancePath, 'utf-8'));
+    console.log(`[Vectra] Starting instance: ${instance.instanceId}`);
+
+    if (instance.transport.type === 'discord' && !process.env['DISCORD_BOT_TOKEN']) {
+      console.error('[vectra] Error: DISCORD_BOT_TOKEN not set. Add it to .env');
+      process.exit(1);
+    }
+
+    const transport = createTransport(instance.transport.type, {
+      ...instance.transport.config,
+      token: process.env[instance.transport.config.tokenEnvVar ?? 'DISCORD_BOT_TOKEN'],
+    });
+
+    m.wireMessageHandler(transport);
+    m.initScheduler();
+
+    transport.onConnect(() => console.log('[Vectra] Connected'));
+    transport.onDisconnect((reason: string) => console.log(`[Vectra] Disconnected: ${reason}`));
+    transport.onError((err: Error) => console.error('[Vectra] Error:', err.message));
+
+    await transport.connect();
+    console.log('[Vectra] Running. Ctrl+C to stop.');
+
+    process.on('SIGINT', () => { m.shutdown(); process.exit(0); });
+    process.on('SIGTERM', () => { m.shutdown(); process.exit(0); });
+  }).catch((err: Error) => {
+    console.error('[Vectra] Fatal startup error:', err.message);
+    console.error(err.stack);
+    process.exit(1);
+  });
 } else {
   console.log('Usage: vectra [init|start]');
   console.log('  init   — create a new instance config');
