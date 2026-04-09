@@ -141,3 +141,38 @@ What we built works. Self-comparison produces zero drift. Simulated perturbation
 ESP is the infrastructure layer edge AI has been missing — not a new model, not a new benchmark, but a protocol that makes binary embedding exchange reliable across model versions, pipeline components, and fleet nodes. The same way TCP made packet communication reliable not by preventing loss but by making it detectable and recoverable.
 
 The protocol is implemented, tested, and open-sourced. The path from here is integration, adoption, and standardization.
+
+---
+
+## Benchmark Results — April 2026
+
+**Live DGX GB10 telemetry: Text Context vs Binary Embedding Pipeline Throughput**
+
+We ran a head-to-head benchmark measuring wall-clock cost of passing context through a pipeline as raw text (requiring LLM re-inference at each hop) versus pre-encoded binary embeddings (encode once, transfer vectors).
+
+### Headline Numbers
+
+| Context Size | Text Path (ms) | Binary Path (ms) | Single-Hop Speedup | 5-Hop Speedup |
+|---|---|---|---|---|
+| 1K tokens | 2,540 | 69 | 36.9x | **153.6x** |
+| 4K tokens | 2,694 | 188 | 14.3x | **66.1x** |
+| 16K tokens | 8,087 | 664 | 12.2x | **58.7x** |
+| 32K tokens | 15,451 | 1,592 | 9.7x | **47.4x** |
+| 64K tokens | 31,000 | 2,295 | 13.5x | **65.8x** |
+| 128K tokens | 65,421 | 4,577 | 14.3x | **69.9x** |
+
+### Key Findings
+
+1. **LLM inference is >99% of text path cost.** Serialization and network transfer are negligible. Any optimization that eliminates re-inference at pipeline hops yields massive gains.
+
+2. **Embedding encoding is 7-14x faster than LLM inference** across all context sizes (67ms vs 2,538ms at 1K; 4,552ms vs 65,409ms at 128K).
+
+3. **Binary embeddings are 4x larger in raw bytes** (0.25x compression ratio). The value is not size reduction — it's avoiding repeated O(n²) attention computation at each pipeline stage.
+
+4. **5-hop pipeline speedup: 47-154x.** Text must re-run full LLM inference at each of 5 stages. Binary encodes once and transfers pre-computed vectors. At 128K tokens across 5 hops: 327 seconds (text) vs 4.7 seconds (binary).
+
+5. **Throughput:** Binary path sustains 14,500-28,000 tokens/sec vs text path's 390-2,070 tokens/sec.
+
+These numbers validate ESP's core value proposition: binary embedding exchange between pipeline components isn't just a nice optimization — it's a **70x performance multiplier** for multi-hop agent pipelines. ESP ensures those binary embeddings remain semantically valid across model versions.
+
+Full benchmark: [`docs/benchmark-context-pipeline.md`](./benchmark-context-pipeline.md)
