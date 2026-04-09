@@ -30,7 +30,7 @@ const DB_PATH = process.env['VECTRA_SESSION_DB'] ?? defaultDbPath(INSTANCE_ID);
 import { readdirSync } from 'node:fs';
 function resolveInstancePath(): string {
   if (process.env['VECTRA_INSTANCE']) return process.env['VECTRA_INSTANCE'];
-  const instancesDir = resolve(import.meta.dirname ?? '.', '../../instances');
+  const instancesDir = resolve(process.cwd(), 'instances');
   try {
     const files = readdirSync(instancesDir).filter(f => f.endsWith('.instance.json'));
     if (files.length === 1) return resolve(instancesDir, files[0]!);
