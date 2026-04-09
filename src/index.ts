@@ -8,6 +8,8 @@
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { config as dotenvConfig } from 'dotenv';
+dotenvConfig(); // loads .env from cwd automatically
 import { SessionStore, defaultDbPath } from './session/store.js';
 import { ContextWindowManager } from './session/context.js';
 import { ModelClient, type ProviderConfig } from './model/client.js';
