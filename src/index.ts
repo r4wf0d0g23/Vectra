@@ -93,6 +93,7 @@ const COMPACTION_KEEP_LAST = Number(process.env['VECTRA_COMPACTION_KEEP_LAST'] ?
 
 // System prompt
 const SYSTEM_PROMPT = process.env['VECTRA_SYSTEM_PROMPT'] ??
+  (_bootInstance as { systemPrompt?: string }).systemPrompt ??
   'You are a helpful assistant. Be concise and direct.';
 
 // ─── Core Components ────────────────────────────────────────────────

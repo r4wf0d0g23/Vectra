@@ -9,6 +9,13 @@
 
 import OpenAI from 'openai';
 
+// ─── Helpers ────────────────────────────────────────────────────────
+
+/** Strip thinking blocks emitted by reasoning models (e.g. Nemotron). */
+function stripThinkingBlocks(text: string): string {
+  return text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+}
+
 // ─── Types ──────────────────────────────────────────────────────────
 
 export interface ModelResponse {
@@ -185,7 +192,7 @@ export class ModelClient {
     const usage = response.usage;
 
     return {
-      content: choice?.message?.content ?? '',
+      content: stripThinkingBlocks(choice?.message?.content ?? ''),
       tokenUsage: {
         prompt: usage?.prompt_tokens ?? 0,
         completion: usage?.completion_tokens ?? 0,
@@ -242,7 +249,7 @@ export class ModelClient {
 
     // Token usage isn't available per-chunk in streaming; estimate from content length
     return {
-      content,
+      content: stripThinkingBlocks(content),
       tokenUsage: {
         prompt: 0,
         completion: Math.ceil(content.length / 4),

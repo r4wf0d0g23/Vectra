@@ -95,6 +95,10 @@
         }
       }
     },
+    "systemPrompt": {
+      "type": "string",
+      "description": "System prompt for the main agent. If omitted, uses Vectra default."
+    },
     "providers": {
       "type": "object",
       "description": "Per-provider API config. Keys are provider IDs (anthropic, openai, xai, vllm, openrouter).",

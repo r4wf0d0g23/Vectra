@@ -84,6 +84,7 @@ interface InstanceConfig {
     heartbeatIntervalMs: number;
   };
   providers: Record<string, ProviderConfig>;
+  systemPrompt?: string;
 }
 
 // ─── Main ───────────────────────────────────────────────────────────
@@ -240,7 +241,14 @@ export async function init(): Promise<void> {
       Math.min(5, parseInt(autonomyStr, 10) || 4),
     );
 
-    // 7. ATP instance path
+    // 7. System prompt
+    console.log('\nSystem prompt (defines your agent\'s personality and role):');
+    console.log('  Press Enter for default, or type a custom prompt.');
+    console.log('  Default: "You are a helpful assistant. Be concise and direct."');
+    const systemPromptInput = await askDefault(rl, '> ', '');
+    const systemPrompt = systemPromptInput || undefined;
+
+    // 8. ATP instance path
     console.log('\nATP instance:');
     console.log('  new      — create a blank ATP instance');
     console.log('  existing — point to an existing ATP directory');
@@ -290,6 +298,7 @@ export async function init(): Promise<void> {
         heartbeatIntervalMs: 30000,
       },
       providers: providersConfig,
+      ...(systemPrompt ? { systemPrompt } : {}),
     };
 
     // Write instance config
