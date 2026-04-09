@@ -96,5 +96,39 @@
       }
     }
   },
-  "additionalProperties": false
+  "additionalProperties": false,
+  "properties": {
+    "scheduler": {
+      "type": "object",
+      "description": "Scheduler configuration for cron jobs and heartbeat checks",
+      "properties": {
+        "cronJobs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "schedule", "task", "channelId", "enabled"],
+            "properties": {
+              "id": { "type": "string" },
+              "schedule": { "type": "string", "description": "Cron expression e.g. '0 9 * * *'" },
+              "task": { "type": "string", "description": "Task description injected as message" },
+              "channelId": { "type": "string" },
+              "model": { "type": "string" },
+              "enabled": { "type": "boolean" }
+            }
+          }
+        },
+        "heartbeat": {
+          "type": "object",
+          "properties": {
+            "intervalMs": { "type": "integer", "description": "Heartbeat interval in milliseconds" },
+            "prompt": { "type": "string", "description": "Heartbeat prompt to inject" },
+            "channelId": { "type": "string" },
+            "model": { "type": "string" },
+            "quietHoursStart": { "type": "integer", "minimum": 0, "maximum": 23 },
+            "quietHoursEnd": { "type": "integer", "minimum": 0, "maximum": 23 }
+          }
+        }
+      }
+    }
+  }
 }
