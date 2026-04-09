@@ -21,7 +21,7 @@ This is the same class of problem TCP/IP solved for packet communication. TCP do
 
 No production standard exists for verifying embedding compatibility between pipeline components. Benchmarks like MTEB measure individual model quality. Model cards describe characteristics. Sentence Transformers standardizes the encoding interface. Nobody standardizes compatibility between the spaces those models produce. A pipeline with three embedding-dependent components has zero protocol-level assurance that they're operating in the same geometric space.
 
-We built that protocol.
+We designed, specified, and built foundational primitives for ESP.
 
 ---
 
@@ -120,7 +120,7 @@ Vectra's contribution is the first working implementation with real telemetry, v
 
 ### Implementation Timeline
 
-**v0.x (Current):** ESP is implemented and operational. The anchor set is defined (27 phrases, 5 domains). Baseline ESV is computed against nemotron-embed (2048 dimensions, DGX GB10). Drift detection is validated across multiple noise levels. The `src/embedding/` module provides all primitives: embedder client, ESV computation, ESV comparison, and drift detection with baseline management. Text-only context in production — binary embeddings are not yet in the hot path.
+**v0.x (Current):** Anchor fingerprinting, ESV computation, and drift detection are implemented and validated. ESP is not yet integrated into the execution pipeline. The anchor set is defined (27 phrases, 5 domains). Baseline ESV is computed against nemotron-embed (2048 dimensions, DGX GB10). Drift detection is validated across multiple noise levels. The `src/embedding/` module provides all primitives: embedder client, ESV computation, ESV comparison, and drift detection with baseline management. Text-only context in production — binary embeddings are not yet in the hot path.
 
 **v1.x (Next):** Binary context as an opt-in acceleration layer for same-model pipeline components. ESV headers attached to context bundles. Drift detection integrated into the T1 scheduled scan cycle. Procrustes alignment available for within-family model updates. Dual-space indexing: text always authoritative, binary embeddings as a cache that can be invalidated on drift.
 
@@ -132,7 +132,7 @@ Vectra's contribution is the first working implementation with real telemetry, v
 
 ### Conclusion
 
-We built a working protocol for detecting and negotiating embedding drift. It's validated against a live 2048-dimension model on production hardware. The ESV fingerprint — 12 characters derived from 27 anchor phrases — tells any pipeline component whether binary context from another component is geometrically compatible or semantic garbage.
+We designed, specified, and built foundational primitives for detecting and negotiating embedding drift. It's validated against a live 2048-dimension model on production hardware. The ESV fingerprint — 12 characters derived from 27 anchor phrases — tells any pipeline component whether binary context from another component is geometrically compatible or semantic garbage.
 
 The problem is real: embedding spaces drift when models update, and no production standard exists for verifying compatibility. The failure mode is silent: wrong retrieval results that look plausible. Every deployment using embeddings in a multi-component pipeline carries this risk today with no protocol-level mitigation.
 
@@ -140,7 +140,9 @@ What we built works. Self-comparison produces zero drift. Simulated perturbation
 
 ESP is the infrastructure layer edge AI has been missing — not a new model, not a new benchmark, but a protocol that makes binary embedding exchange reliable across model versions, pipeline components, and fleet nodes. The same way TCP made packet communication reliable not by preventing loss but by making it detectable and recoverable.
 
-The protocol is implemented, tested, and open-sourced. The path from here is integration, adoption, and standardization.
+> **Note:** The TCP analogy describes the architectural pattern (detect/negotiate/fallback), not the reliability class. TCP guarantees are deterministic; ESP provides probabilistic compatibility detection.
+
+Anchor fingerprinting, ESV computation, and drift detection are implemented and validated. ESP is a validated design with reference tooling, not a deployed production protocol. ESP is not yet integrated into the execution pipeline. The path from here is integration, adoption, and standardization.
 
 ---
 
