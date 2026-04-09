@@ -32,8 +32,14 @@ function resolveInstancePath(): string {
   if (process.env['VECTRA_INSTANCE']) return process.env['VECTRA_INSTANCE'];
   const instancesDir = resolve(process.cwd(), 'instances');
   try {
-    const files = readdirSync(instancesDir).map(f => f.trim()).filter(f => f.endsWith('.instance.json'));
-    if (files.length === 1) return resolve(instancesDir, files[0]!);
+    const files = readdirSync(instancesDir)
+      .map(f => f.trim())
+      .filter(f => f.endsWith('.instance.json'));
+    if (files.length === 1) {
+      const p = resolve(instancesDir, files[0]!).trimEnd();
+      process.stderr.write(`[vectra] Auto-discovered instance: ${JSON.stringify(p)}\n`);
+      return p;
+    }
     if (files.length > 1) {
       console.error(`[Vectra] Multiple instances found. Set VECTRA_INSTANCE env var to specify one:\n  ${files.join('\n  ')}`);
       process.exit(1);
