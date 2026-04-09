@@ -8,7 +8,9 @@
   "scripts": {
     "build": "tsc",
     "check": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "start": "node dist/src/index.js",
+    "start:dev": "VECTRA_INSTANCE=instances/reality-anchor.instance.json node dist/src/index.js"
   },
   "keywords": [
     "atp",
@@ -25,5 +27,14 @@
   "devDependencies": {
     "@types/node": "^25.5.2",
     "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node-cron": "^3.0.11",
+    "@types/ws": "^8.18.1",
+    "better-sqlite3": "^12.8.0",
+    "node-cron": "^4.2.1",
+    "openai": "^6.34.0",
+    "ws": "^8.20.0"
   }
 }
