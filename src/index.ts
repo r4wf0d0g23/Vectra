@@ -30,12 +30,6 @@ import { processWriteBlocks } from './tools/file-writer.js';
 
 const config = loadConfig();
 
-// Instance ID — from env or default
-const INSTANCE_ID = process.env['VECTRA_INSTANCE_ID'] ?? 'default';
-
-// Session database path — configurable via env, falls back to ~/.vectra/{instanceId}/sessions.db
-const DB_PATH = process.env['VECTRA_SESSION_DB'] ?? defaultDbPath(INSTANCE_ID);
-
 // Load instance JSON early (used for providers and scheduler config)
 // Auto-discover instance: VECTRA_INSTANCE env > single file in instances/ > error
 import { readdirSync } from 'node:fs';
@@ -62,6 +56,7 @@ function resolveInstancePath(): string {
 const _INSTANCE_PATH = resolveInstancePath();
 
 interface _BootInstanceShape {
+  instanceId?: string;
   models?: { mainAgent?: string };
   providers?: Record<string, ProviderConfig>;
   [key: string]: unknown;
@@ -74,6 +69,12 @@ try {
   process.stderr.write(`[vectra] Could not load instance config from ${_INSTANCE_PATH}\n`);
   process.stderr.write(`[vectra] Parse error: ${e}\n`);
 }
+
+// Instance ID — prefer instance config's instanceId, then env var, then 'default'
+const INSTANCE_ID = _bootInstance.instanceId ?? process.env['VECTRA_INSTANCE_ID'] ?? 'default';
+
+// Session database path — configurable via env, falls back to ~/.vectra/{instanceId}/sessions.db
+const DB_PATH = process.env['VECTRA_SESSION_DB'] ?? defaultDbPath(INSTANCE_ID);
 
 // Check DISCORD_BOT_TOKEN if transport is discord
 const _transportType = (_bootInstance as { transport?: { type?: string } }).transport?.type;
@@ -181,8 +182,23 @@ export function wireMessageHandler(transport: TransportConnector): void {
       // Append write protocol instructions
       systemPrompt += WRITE_PROTOCOL_SUFFIX;
 
+      // Compute soul fingerprint and detect changes per-session
+      const soulFingerprint = Buffer.from(systemPrompt).toString('base64').slice(0, 16);
+      const storedSoulHash = store.getSoulHash(sessionId);
+
       // Build context window
       const messages = contextMgr.buildContext(sessionId, systemPrompt, message.text);
+
+      // If soul files changed since last message in this session, inject a notice after the system message
+      if (storedSoulHash !== null && storedSoulHash !== soulFingerprint) {
+        messages.splice(1, 0, {
+          role: 'system' as const,
+          content: '[SOUL FILES UPDATED — new directives now active. Prior context was under different soul files.]',
+        });
+      }
+
+      // Update stored soul hash for this session
+      store.updateSoulHash(sessionId, soulFingerprint);
 
       // Call model
       const response = await modelClient.complete(MODEL_NAME, messages);

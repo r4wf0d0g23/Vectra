@@ -13,7 +13,11 @@ import OpenAI from 'openai';
 
 /** Strip thinking blocks emitted by reasoning models (e.g. Nemotron). */
 function stripThinkingBlocks(text: string): string {
-  return text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+  return text
+    .replace(/<think>[\s\S]*?<\/think>/g, '') // full blocks
+    .replace(/<think>[\s\S]*/g, '')            // unclosed opening tag (truncated)
+    .replace(/<\/think>/g, '')                 // orphaned closing tag
+    .trim();
 }
 
 // ─── Types ──────────────────────────────────────────────────────────

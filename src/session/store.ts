@@ -32,6 +32,7 @@ export interface Session {
   updatedAt: Date;
   totalTokens: number;
   compactionCount: number;
+  soulHash?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -51,6 +52,8 @@ export class SessionStore {
   private stmtDeleteOldMessages!: Database.Statement;
   private stmtCountDeletedSessions!: Database.Statement;
   private stmtDeleteOldSessions!: Database.Statement;
+  private stmtGetSoulHash!: Database.Statement;
+  private stmtUpdateSoulHash!: Database.Statement;
 
   constructor(dbPath: string) {
     // Ensure parent directory exists
@@ -63,10 +66,20 @@ export class SessionStore {
     this.db.pragma('foreign_keys = ON');
 
     this.initSchema();
+    this.migrateSchema();
     this.prepareStatements();
   }
 
   // ─── Schema ───────────────────────────────────────────────────────
+
+  private migrateSchema(): void {
+    // Add soul_hash column to existing databases that predate this field
+    try {
+      this.db.exec('ALTER TABLE sessions ADD COLUMN soul_hash TEXT');
+    } catch {
+      // Column already exists — safe to ignore
+    }
+  }
 
   private initSchema(): void {
     this.db.exec(`
@@ -77,6 +90,7 @@ export class SessionStore {
         updated_at TEXT NOT NULL,
         total_tokens INTEGER NOT NULL DEFAULT 0,
         compaction_count INTEGER NOT NULL DEFAULT 0,
+        soul_hash TEXT,
         metadata TEXT
       );
 
@@ -147,6 +161,14 @@ export class SessionStore {
 
     this.stmtDeleteOldSessions = this.db.prepare(
       'DELETE FROM sessions WHERE updated_at < ?'
+    );
+
+    this.stmtGetSoulHash = this.db.prepare(
+      'SELECT soul_hash FROM sessions WHERE id = ?'
+    );
+
+    this.stmtUpdateSoulHash = this.db.prepare(
+      'UPDATE sessions SET soul_hash = ? WHERE id = ?'
     );
   }
 
@@ -267,6 +289,17 @@ export class SessionStore {
     txn();
   }
 
+  // ─── Soul Hash Operations ─────────────────────────────────────────
+
+  getSoulHash(sessionId: string): string | null {
+    const row = this.stmtGetSoulHash.get(sessionId) as { soul_hash: string | null } | undefined;
+    return row?.soul_hash ?? null;
+  }
+
+  updateSoulHash(sessionId: string, hash: string): void {
+    this.stmtUpdateSoulHash.run(hash, sessionId);
+  }
+
   // ─── Cleanup ──────────────────────────────────────────────────────
 
   /**
@@ -294,6 +327,7 @@ export class SessionStore {
       updatedAt: new Date(row.updated_at),
       totalTokens: row.total_tokens,
       compactionCount: row.compaction_count,
+      soulHash: row.soul_hash ?? undefined,
       metadata: row.metadata ? JSON.parse(row.metadata) as Record<string, unknown> : undefined,
     };
   }
@@ -320,6 +354,7 @@ interface SessionRow {
   updated_at: string;
   total_tokens: number;
   compaction_count: number;
+  soul_hash: string | null;
   metadata: string | null;
 }
 
