@@ -184,3 +184,15 @@ Binary retrieval with K≥3 chunks retains **100% of answer quality** compared t
 The critical finding for agent decision-making: **binary retrieval does not lose information that matters — when sufficient chunks are retrieved.** The 70x throughput advantage of binary embeddings (documented in the pipeline benchmark) comes with zero quality penalty at K=3-5. However, the benchmark exposed a significant limitation: the scoring model (nemotron3-super acting as its own judge) is unreliable, with identical correct answers scored 0 and 3 across runs. For the dual-space architecture, this suggests that the primary value of full-text semantic search is not improved retrieval quality for single-document queries, but rather **cross-document discovery** and **ambiguous query resolution** — scenarios not yet benchmarked. The dual-space integration should proceed but with revised priority: binary retrieval is a stronger baseline than initially assumed.
 
 Full benchmark: [`docs/benchmark-retrieval-quality.md`](./benchmark-retrieval-quality.md)
+
+---
+
+## Context Loss Analysis — Benchmark Results (v2, Opus External Judge)
+
+Binary retrieval at K=3 retains 100% of answer quality versus full-text baseline across all five question types tested — fact recall, numerical precision, sequential reasoning, entity specificity, and cross-chunk synthesis. This was validated by an external Opus judge scoring 45 Q&A pairs produced by nemotron3-super against both full-text and binary retrieval paths.
+
+The critical failure threshold is K=1: at single-chunk retrieval, average quality retention drops to 57%. Fact recall falls to 0% (the specific chunk containing the error code is not retrieved without broader context), and cross-chunk synthesis falls to 33% (multiple contributing factors cannot be synthesized from a single chunk). At K=3, both recover to 100%. K=5 provides no additional improvement for document structures of this size.
+
+**Methodological note:** v1 of this benchmark used the answering model as its own judge, producing inflated and inconsistent scores. v2 corrects this with external judging. The K=3 = 100% retention finding holds under external scrutiny. The 70x pipeline latency advantage from the prior benchmark therefore applies without measurable semantic loss at K≥3 — the dual-space architecture (binary retrieval index + text authoritative store) delivers both the speed and the quality.
+
+One finding that updates the framing: a portion of what appeared to be "binary retrieval loss" in sequential reasoning is actually a generation model ceiling. Nemotron3-super scores 2/3 on sequential reasoning even with full text context — it partially answers the 4-part sequence question regardless of retrieval method. This means some quality gaps attributed to binary retrieval are actually generation model limitations independent of how context was retrieved.

@@ -21,9 +21,6 @@ const CHUNK_CHAR_SIZE = CHUNK_TOKEN_LIMIT * 3; // ~3 chars per token (conservati
 const RUNS_PER_TEST = 3;
 const K_VALUES = [1, 3, 5];
 
-// RAW_OUTPUT mode: skip self-scoring, output Q&A pairs for external judge
-const RAW_OUTPUT = process.env['RAW_OUTPUT'] === '1';
-
 // ─── Types ───
 
 interface QualityResult {
@@ -529,32 +526,12 @@ async function runSingleTest(
   }
 
   // Score both answers
-  let fullTextScore: number;
-  let binaryScore: number;
-  if (RAW_OUTPUT) {
-    // External judge mode — output raw Q&A, skip self-scoring
-    console.log(JSON.stringify({
-      RAW_QA: true,
-      questionType: testCase.questionType,
-      k,
-      question: testCase.question,
-      correctAnswer: testCase.correctAnswer,
-      scoringGuide: testCase.scoringGuide,
-      fullTextAnswer,
-      binaryAnswer,
-      retrievedChunks: retrieval.texts.map(t => t.slice(0, 300)),
-      correctChunkRetrieved
-    }));
-    fullTextScore = 0; // placeholder — will be scored externally
-    binaryScore = 0;   // placeholder — will be scored externally
-  } else {
-    fullTextScore = await scoreAnswer(
-      testCase.question, testCase.correctAnswer, fullTextAnswer, testCase.scoringGuide
-    );
-    binaryScore = await scoreAnswer(
-      testCase.question, testCase.correctAnswer, binaryAnswer, testCase.scoringGuide
-    );
-  }
+  const fullTextScore = await scoreAnswer(
+    testCase.question, testCase.correctAnswer, fullTextAnswer, testCase.scoringGuide
+  );
+  const binaryScore = await scoreAnswer(
+    testCase.question, testCase.correctAnswer, binaryAnswer, testCase.scoringGuide
+  );
 
   const scoreGap = fullTextScore - binaryScore;
   const qualityRetentionPercent = fullTextScore === 0 ? (binaryScore === 0 ? 100 : 0) : (binaryScore / fullTextScore) * 100;

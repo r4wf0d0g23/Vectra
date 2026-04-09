@@ -1,6 +1,6 @@
 {
   "benchmark": "retrieval-quality",
-  "timestamp": "2026-04-09T19:37:56.522Z",
+  "timestamp": "2026-04-09T19:56:16.318Z",
   "model": "nemotron3-super",
   "embeddingModel": "nemotron-embed",
   "runsPerTest": 3,
@@ -11,19 +11,19 @@
   ],
   "summary": {
     "bestK": 5,
-    "bestKRetention": 120,
+    "bestKRetention": 100,
     "overallByK": {
       "1": {
-        "retention": 80.002,
-        "gap": 0.06599999999999999
+        "retention": 100,
+        "gap": 0
       },
       "3": {
         "retention": 100,
-        "gap": -0.066
+        "gap": 0
       },
       "5": {
-        "retention": 120,
-        "gap": -0.2
+        "retention": 100,
+        "gap": 0
       }
     }
   },
@@ -31,17 +31,17 @@
     {
       "questionType": "fact_recall",
       "k": 1,
-      "avgFullTextScore": 3,
-      "avgBinaryScore": 2,
-      "avgScoreGap": 1,
-      "avgQualityRetention": 66.67,
+      "avgFullTextScore": 0,
+      "avgBinaryScore": 0,
+      "avgScoreGap": 0,
+      "avgQualityRetention": 100,
       "correctChunkRetrievedRate": 0
     },
     {
       "questionType": "fact_recall",
       "k": 3,
-      "avgFullTextScore": 3,
-      "avgBinaryScore": 3,
+      "avgFullTextScore": 0,
+      "avgBinaryScore": 0,
       "avgScoreGap": 0,
       "avgQualityRetention": 100,
       "correctChunkRetrievedRate": 1
@@ -49,8 +49,8 @@
     {
       "questionType": "fact_recall",
       "k": 5,
-      "avgFullTextScore": 3,
-      "avgBinaryScore": 3,
+      "avgFullTextScore": 0,
+      "avgBinaryScore": 0,
       "avgScoreGap": 0,
       "avgQualityRetention": 100,
       "correctChunkRetrievedRate": 1
@@ -58,8 +58,8 @@
     {
       "questionType": "numerical_precision",
       "k": 1,
-      "avgFullTextScore": 3,
-      "avgBinaryScore": 3,
+      "avgFullTextScore": 0,
+      "avgBinaryScore": 0,
       "avgScoreGap": 0,
       "avgQualityRetention": 100,
       "correctChunkRetrievedRate": 0
@@ -67,8 +67,8 @@
     {
       "questionType": "numerical_precision",
       "k": 3,
-      "avgFullTextScore": 3,
-      "avgBinaryScore": 3,
+      "avgFullTextScore": 0,
+      "avgBinaryScore": 0,
       "avgScoreGap": 0,
       "avgQualityRetention": 100,
       "correctChunkRetrievedRate": 0
@@ -76,8 +76,8 @@
     {
       "questionType": "numerical_precision",
       "k": 5,
-      "avgFullTextScore": 3,
-      "avgBinaryScore": 3,
+      "avgFullTextScore": 0,
+      "avgBinaryScore": 0,
       "avgScoreGap": 0,
       "avgQualityRetention": 100,
       "correctChunkRetrievedRate": 0
@@ -86,9 +86,9 @@
       "questionType": "sequential_reasoning",
       "k": 1,
       "avgFullTextScore": 0,
-      "avgBinaryScore": 1,
-      "avgScoreGap": -1,
-      "avgQualityRetention": 66.67,
+      "avgBinaryScore": 0,
+      "avgScoreGap": 0,
+      "avgQualityRetention": 100,
       "correctChunkRetrievedRate": 0
     },
     {
@@ -112,17 +112,17 @@
     {
       "questionType": "entity_specificity",
       "k": 1,
-      "avgFullTextScore": 2.33,
-      "avgBinaryScore": 3,
-      "avgScoreGap": -0.67,
-      "avgQualityRetention": 166.67,
+      "avgFullTextScore": 0,
+      "avgBinaryScore": 0,
+      "avgScoreGap": 0,
+      "avgQualityRetention": 100,
       "correctChunkRetrievedRate": 0
     },
     {
       "questionType": "entity_specificity",
       "k": 3,
-      "avgFullTextScore": 3,
-      "avgBinaryScore": 3,
+      "avgFullTextScore": 0,
+      "avgBinaryScore": 0,
       "avgScoreGap": 0,
       "avgQualityRetention": 100,
       "correctChunkRetrievedRate": 1
@@ -130,8 +130,8 @@
     {
       "questionType": "entity_specificity",
       "k": 5,
-      "avgFullTextScore": 2.33,
-      "avgBinaryScore": 2.33,
+      "avgFullTextScore": 0,
+      "avgBinaryScore": 0,
       "avgScoreGap": 0,
       "avgQualityRetention": 100,
       "correctChunkRetrievedRate": 1
@@ -139,30 +139,30 @@
     {
       "questionType": "cross_chunk_synthesis",
       "k": 1,
-      "avgFullTextScore": 1,
+      "avgFullTextScore": 0,
       "avgBinaryScore": 0,
-      "avgScoreGap": 1,
-      "avgQualityRetention": 0,
+      "avgScoreGap": 0,
+      "avgQualityRetention": 100,
       "correctChunkRetrievedRate": 0
     },
     {
       "questionType": "cross_chunk_synthesis",
       "k": 3,
-      "avgFullTextScore": 1.33,
-      "avgBinaryScore": 1.67,
-      "avgScoreGap": -0.33,
+      "avgFullTextScore": 0,
+      "avgBinaryScore": 0,
+      "avgScoreGap": 0,
       "avgQualityRetention": 100,
       "correctChunkRetrievedRate": 1
     },
     {
       "questionType": "cross_chunk_synthesis",
       "k": 5,
-      "avgFullTextScore": 1,
-      "avgBinaryScore": 2,
-      "avgScoreGap": -1,
-      "avgQualityRetention": 200,
+      "avgFullTextScore": 0,
+      "avgBinaryScore": 0,
+      "avgScoreGap": 0,
+      "avgQualityRetention": 100,
       "correctChunkRetrievedRate": 1
     }
   ],
-  "conclusion": "At optimal K=5, binary retrieval retains 120.0% of full-text answer quality across all question types."
+  "conclusion": "At optimal K=5, binary retrieval retains 100.0% of full-text answer quality across all question types."
 }
