@@ -205,20 +205,20 @@ export async function init(): Promise<void> {
 
     const providersConfig: Record<string, ProviderConfig> = {};
     const providerEnvVars: Record<string, string> = {};
+    let vllmNeedsKey = false;
 
     for (const provider of selectedProviders) {
       if (provider.id === 'vllm') {
-        const vllmUrl = await askDefault(
-          rl,
-          '  vLLM endpoint URL (e.g. http://100.78.161.126:8001/v1): ',
-          'http://localhost:8001/v1',
-        );
+        console.log('  Note: use `vllm/` prefix for model names (e.g. vllm/nemotron3-super)');
+        console.log('  vLLM endpoint URL (e.g. http://100.78.161.126:8001/v1) [required]:');
+        const vllmUrl = await askRequired(rl, '  > ');
         const needsKey = (await askDefault(rl, '  Requires API key? (y/N): ', 'N'))
           .trim()
           .toLowerCase();
         if (needsKey === 'y' || needsKey === 'yes') {
           providersConfig['vllm'] = { baseUrl: vllmUrl, envVar: 'VLLM_API_KEY' };
           providerEnvVars['VLLM_API_KEY'] = provider.envHint;
+          vllmNeedsKey = true;
         } else {
           // No key required — endpoint URL only, no env var needed
           providersConfig['vllm'] = { baseUrl: vllmUrl };
@@ -311,13 +311,16 @@ export async function init(): Promise<void> {
     // Write .env.example
     const envLines = [
       '# Vectra environment variables',
-      `# Instance: ${sanitizedId}`,
-      '',
-      '# OpenClaw gateway',
-      'VECTRA_OPENCLAW_URL=http://localhost:18789',
-      'VECTRA_OPENCLAW_TOKEN=',
+      '# Copy this file to .env and fill in values',
       '',
     ];
+
+    // Discord bot token — always shown as placeholder in .env.example, never the real token
+    if (transport === 'discord') {
+      envLines.push('# Discord bot token (required)');
+      envLines.push('DISCORD_BOT_TOKEN=your_bot_token_here');
+      envLines.push('');
+    }
 
     if (Object.keys(envVars).length > 0) {
       envLines.push('# Transport');
@@ -327,10 +330,26 @@ export async function init(): Promise<void> {
       envLines.push('');
     }
 
-    if (Object.keys(providerEnvVars).length > 0) {
+    // Non-vLLM provider env vars
+    const nonVllmEnvVars = Object.fromEntries(
+      Object.entries(providerEnvVars).filter(([k]) => k !== 'VLLM_API_KEY'),
+    );
+    if (Object.keys(nonVllmEnvVars).length > 0) {
       envLines.push('# Model providers');
-      for (const [key, hint] of Object.entries(providerEnvVars)) {
+      for (const [key, hint] of Object.entries(nonVllmEnvVars)) {
         envLines.push(`${key}=${hint}`);
+      }
+      envLines.push('');
+    }
+
+    // vLLM section — key is optional
+    const hasVllm = selectedProviders.some((p) => p.id === 'vllm');
+    if (hasVllm) {
+      envLines.push('# vLLM — no API key required if your server runs without auth');
+      if (vllmNeedsKey) {
+        envLines.push('VLLM_API_KEY=your-vllm-api-key');
+      } else {
+        envLines.push('# VLLM_API_KEY=optional');
       }
       envLines.push('');
     }

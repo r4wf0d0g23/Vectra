@@ -97,6 +97,7 @@ function detectProvider(model: string): string {
   if (model.startsWith('openai/')) return 'openai';
   if (model.startsWith('xai/')) return 'xai';
   if (model.startsWith('vllm/')) return 'vllm';
+  if (model.startsWith('dgx-vllm/')) return 'vllm'; // alias for vllm
   if (model.startsWith('openrouter/')) return 'openrouter';
   // Fallback: pattern matching for bare model names
   if (model.includes('claude')) return 'anthropic';
@@ -122,7 +123,9 @@ export class ModelClient {
    * Get an OpenAI-compatible client and resolved model name for a given model string.
    */
   private getClient(model: string): { client: OpenAI; resolvedModel: string } {
-    const providerKey = detectProvider(model);
+    const rawProviderKey = detectProvider(model);
+    // Normalize aliases to canonical provider keys
+    const providerKey = rawProviderKey === 'dgx-vllm' ? 'vllm' : rawProviderKey;
     const providerDefault = PROVIDER_CONFIG[providerKey];
     const providerOverride = this.providers[providerKey] ?? {};
 
