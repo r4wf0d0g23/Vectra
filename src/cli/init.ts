@@ -402,8 +402,9 @@ export async function init(): Promise<void> {
     console.log(`  Transport: ${transport}`);
     console.log(`  Autonomy:  ${autonomyLevel} — ${AUTONOMY_LEVELS[autonomyLevel]}`);
     console.log(`  ATP path:  ${atpPath}`);
-    console.log(`\n  Next: copy .env.example to .env, fill in credentials, then run:`);
-    console.log(`    vectra start\n`);
+    console.log(`\n  Next steps:`);
+    console.log(`    1. Your .env has been created with your bot token`);
+    console.log(`    2. Run: vectra start\n`);
   } finally {
     rl.close();
   }

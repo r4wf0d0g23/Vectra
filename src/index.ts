@@ -6,10 +6,17 @@
  * Scheduler injects cron/heartbeat messages with senderTrust: 'cron'.
  */
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { config as dotenvConfig } from 'dotenv';
 dotenvConfig(); // loads .env from cwd automatically
+
+// ─── Startup Sanity Checks ──────────────────────────────────────────
+
+// Warn if .env missing — common new user mistake
+if (!existsSync(resolve(process.cwd(), '.env'))) {
+  process.stderr.write('[vectra] Warning: no .env file found in current directory. Run vectra init to create one.\n');
+}
 import { SessionStore, defaultDbPath } from './session/store.js';
 import { ContextWindowManager } from './session/context.js';
 import { ModelClient, type ProviderConfig } from './model/client.js';
@@ -64,6 +71,13 @@ try {
 } catch (e) {
   process.stderr.write(`[vectra] Could not load instance config from ${_INSTANCE_PATH}\n`);
   process.stderr.write(`[vectra] Parse error: ${e}\n`);
+}
+
+// Check DISCORD_BOT_TOKEN if transport is discord
+const _transportType = (_bootInstance as { transport?: { type?: string } }).transport?.type;
+if (_transportType === 'discord' && !process.env['DISCORD_BOT_TOKEN']) {
+  process.stderr.write('[vectra] Error: DISCORD_BOT_TOKEN is not set. Add it to your .env file.\n');
+  process.exit(1);
 }
 
 // Model name — env var overrides instance config, falls back to config default

@@ -1,5 +1,28 @@
 # Vectra — ATP-Native Agentic Execution Harness
 
+## Quickstart
+
+```bash
+# Install
+git clone https://github.com/r4wf0d0g23/Vectra
+cd Vectra
+npm install
+npm run build
+npm link  # makes 'vectra' command available globally
+
+# Create your agent
+vectra init
+
+# Start
+vectra start
+```
+
+Requirements:
+- Node.js 18+
+- A Discord bot token (create at https://discord.com/developers)
+- At least one AI provider API key, or a vLLM endpoint
+
+
 **Version:** 0.1.0 (scaffold)  
 **Status:** Compiles, core types + state machine implemented, gates stubbed  
 **Repo:** [github.com/r4wf0d0g23/Vectra](https://github.com/r4wf0d0g23/Vectra)
