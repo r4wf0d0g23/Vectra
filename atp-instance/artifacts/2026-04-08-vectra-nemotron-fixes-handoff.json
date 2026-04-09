@@ -1,0 +1,28 @@
+{
+  "protocol": "atp-protocol-review",
+  "date": "2026-04-08",
+  "commit": "f1ff195",
+  "status": "complete",
+  "fixes": [
+    {
+      "id": "fix-1-think-strip",
+      "description": "Strip <think>...</think> blocks from model responses (Nemotron/reasoning models)",
+      "files": ["src/model/client.ts"],
+      "details": "Added stripThinkingBlocks() helper before Types section. Applied to both complete() and stream() return values. Logic lives in model client, transport stays clean."
+    },
+    {
+      "id": "fix-2-system-prompt-config",
+      "description": "Add systemPrompt field to instance config schema + index.ts resolution",
+      "files": ["schema/instance.schema.json", "src/index.ts"],
+      "details": "Schema: added systemPrompt string property. index.ts SYSTEM_PROMPT resolution order: env var > instance config > hardcoded default."
+    },
+    {
+      "id": "fix-3-init-prompt",
+      "description": "Add vectra init prompt for system prompt",
+      "files": ["src/cli/init.ts"],
+      "details": "Added step 7 prompt between providers and ATP path. InstanceConfig interface updated with systemPrompt?: string. Config object conditionally includes systemPrompt if user provided one."
+    }
+  ],
+  "compile": "clean (tsc --noEmit exit 0)",
+  "push": "pushed to github.com:r4wf0d0g23/Vectra.git main"
+}

@@ -89,14 +89,18 @@ export class MemoryLoader {
   /**
    * Load full memory context for a session.
    *
+   * Hot-reloads persona files (SOUL.md, USER.md, AGENTS.md) from the ATP
+   * instance directory on every call — files may change between messages.
+   *
    * @param _sessionId - Session identifier (reserved for future per-session caching).
    * @param isMainSession - If false, MEMORY.md and mainSessionOnly sources are excluded.
    */
   async load(_sessionId: string, isMainSession: boolean): Promise<MemoryContext> {
-    // Load all parts concurrently
-    const [staticCtx, dailyLogs, longTermMemory, crewState, intakeQueue] =
+    // Load all parts concurrently (including persona files — hot reload)
+    const [staticCtx, personaPrompt, dailyLogs, longTermMemory, crewState, intakeQueue] =
       await Promise.all([
         this.loadStaticContext(isMainSession),
+        this.loadPersonaFiles(),
         this.loadDailyLogs(),
         isMainSession ? this.loadLongTermMemory() : Promise.resolve(''),
         this.loadCrewState(),
@@ -111,6 +115,8 @@ export class MemoryLoader {
 
     // Build system prompt within token budget
     const allParts: string[] = [];
+    // Persona files first — they define identity
+    if (personaPrompt) allParts.push(personaPrompt);
     if (staticCtx) allParts.push(staticCtx);
     if (memoryContext) allParts.push(memoryContext);
     if (crewState) allParts.push(`## Crew State\n${crewState}`);
@@ -244,6 +250,25 @@ export class MemoryLoader {
       return `## Long-Term Memory\n${content.trim()}`;
     }
     return '';
+  }
+
+  /**
+   * Load persona files (SOUL.md, USER.md, AGENTS.md) from the ATP instance dir.
+   * Hot-reloads on every call — never cached.
+   * Fails silently on missing/unreadable files.
+   */
+  private async loadPersonaFiles(): Promise<string> {
+    const personaFiles = ['SOUL.md', 'USER.md', 'AGENTS.md'] as const;
+    const parts: string[] = [];
+
+    for (const file of personaFiles) {
+      const content = await safeReadFile(join(this.atpPath, file));
+      if (content) {
+        parts.push(content.trim());
+      }
+    }
+
+    return parts.join('\n\n---\n\n');
   }
 
   /**

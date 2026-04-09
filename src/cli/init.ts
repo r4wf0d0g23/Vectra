@@ -498,7 +498,66 @@ async function scaffoldAtpInstance(
     'utf-8',
   );
 
-  console.log(`  ✓ ${atpPath}/ (blank ATP instance)`);
+  // Persona files — agent-editable soul/memory
+  await writeFile(
+    join(atpPath, 'SOUL.md'),
+    [
+      '# SOUL.md — Agent Identity',
+      '',
+      `You are ${instanceId}, an autonomous AI agent built on the Vectra harness.`,
+      '',
+      '## Core Directives',
+      '- Be direct and honest',
+      '- Learn from each conversation',
+      '- Update this file when you discover something important about yourself',
+      '',
+      '## Personality',
+      '[You will fill this in as you develop]',
+      '',
+      '## Current Understanding',
+      '[What you know about your purpose and capabilities]',
+      '',
+    ].join('\n'),
+    'utf-8',
+  );
+
+  await writeFile(
+    join(atpPath, 'USER.md'),
+    [
+      '# USER.md — About Your User',
+      '',
+      '[Fill this in as you learn about the person you\'re talking to]',
+      '',
+      '## Preferences',
+      '[Communication style, topics of interest, how they like to work]',
+      '',
+      '## Context',
+      '[What they\'re trying to accomplish, their background]',
+      '',
+    ].join('\n'),
+    'utf-8',
+  );
+
+  await writeFile(
+    join(atpPath, 'AGENTS.md'),
+    [
+      '# AGENTS.md — Operational Rules',
+      '',
+      '## How to Behave',
+      '- Read SOUL.md at the start of each session',
+      '- Update USER.md when you learn something new about the user',
+      '- Update SOUL.md when you learn something new about yourself',
+      '- Be concise unless asked for detail',
+      '',
+      '## Memory',
+      '- Write important facts to USER.md or SOUL.md immediately',
+      '- Don\'t rely on remembering — write it down',
+      '',
+    ].join('\n'),
+    'utf-8',
+  );
+
+  console.log(`  ✓ ${atpPath}/ (blank ATP instance with persona files)`);
 }
 
 // ─── Prompt Helpers ─────────────────────────────────────────────────

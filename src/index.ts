@@ -23,6 +23,8 @@ import { ModelClient, type ProviderConfig } from './model/client.js';
 import { Scheduler, type CronJobSpec, type HeartbeatSpec } from './scheduler/index.js';
 import type { TransportConnector, InboundMessage } from './transport/interface.js';
 import { loadConfig } from '../config/vectra.config.js';
+import { MemoryLoader } from './memory/loader.js';
+import { processWriteBlocks } from './tools/file-writer.js';
 
 // ─── Configuration ──────────────────────────────────────────────────
 
@@ -91,10 +93,30 @@ const SOFT_THRESHOLD = Number(process.env['VECTRA_CONTEXT_SOFT_THRESHOLD'] ?? '8
 const HARD_LIMIT = Number(process.env['VECTRA_CONTEXT_HARD_LIMIT'] ?? '120000');
 const COMPACTION_KEEP_LAST = Number(process.env['VECTRA_COMPACTION_KEEP_LAST'] ?? '20');
 
-// System prompt
-const SYSTEM_PROMPT = process.env['VECTRA_SYSTEM_PROMPT'] ??
+// System prompt — fallback when persona files are empty
+const SYSTEM_PROMPT_FALLBACK = process.env['VECTRA_SYSTEM_PROMPT'] ??
   (_bootInstance as { systemPrompt?: string }).systemPrompt ??
   'You are a helpful assistant. Be concise and direct.';
+
+// ATP instance path — needed for persona files and memory loader
+const ATP_PATH = (() => {
+  const fromInstance = (_bootInstance as { atpPath?: string }).atpPath;
+  if (fromInstance) return resolve(fromInstance);
+  // Default: atp-instances/{instanceId}
+  return resolve('atp-instances', INSTANCE_ID);
+})();
+
+// Write protocol instructions appended to system prompt
+const WRITE_PROTOCOL_SUFFIX = `
+
+To update your memory files, include a write block BEFORE your response:
+[VECTRA_WRITE:USER.md]
+# USER.md — About Your User
+[updated content]
+[/VECTRA_WRITE]
+
+Only use write blocks when you learn something genuinely new worth remembering.
+Available files: SOUL.md (your identity), USER.md (about your user), AGENTS.md (operational rules).`;
 
 // ─── Core Components ────────────────────────────────────────────────
 
@@ -104,6 +126,17 @@ const contextMgr = new ContextWindowManager(store, SOFT_THRESHOLD, HARD_LIMIT);
 const modelClient = new ModelClient(
   _bootInstance.providers ?? {},
   MODEL_NAME,
+);
+// Memory loader — hot-reloads persona files on every message
+const memoryLoader = new MemoryLoader(
+  ATP_PATH,
+  resolve(process.cwd()),
+  {
+    timeWindowDays: 2,
+    maxTokens: 8000,
+    sources: ['SOUL.md', 'IDENTITY.md', 'USER.md'],
+    mainSessionOnly: ['MEMORY.md'],
+  },
 );
 
 // ─── Message Handler ────────────────────────────────────────────────
@@ -136,19 +169,34 @@ export function wireMessageHandler(transport: TransportConnector): void {
         await contextMgr.compact(sessionId, modelClient, COMPACTION_KEEP_LAST);
       }
 
+      // Hot-reload persona files and assemble system prompt
+      const isMainSession = true; // TODO: detect shared vs main session from transport metadata
+      let systemPrompt: string;
+      try {
+        const memCtx = await memoryLoader.load(sessionId, isMainSession);
+        systemPrompt = memCtx.systemPrompt || SYSTEM_PROMPT_FALLBACK;
+      } catch {
+        systemPrompt = SYSTEM_PROMPT_FALLBACK;
+      }
+      // Append write protocol instructions
+      systemPrompt += WRITE_PROTOCOL_SUFFIX;
+
       // Build context window
-      const messages = contextMgr.buildContext(sessionId, SYSTEM_PROMPT, message.text);
+      const messages = contextMgr.buildContext(sessionId, systemPrompt, message.text);
 
       // Call model
       const response = await modelClient.complete(MODEL_NAME, messages);
 
-      // Append assistant response
-      const assistantTokens = response.tokenUsage.completion || contextMgr.estimateTokens(response.content);
+      // Process write blocks — extract persona file updates, strip from visible response
+      const cleanedResponse = processWriteBlocks(ATP_PATH, response.content);
+
+      // Append assistant response (cleaned version)
+      const assistantTokens = response.tokenUsage.completion || contextMgr.estimateTokens(cleanedResponse);
       store.append({
         id: crypto.randomUUID(),
         sessionId,
         role: 'assistant',
-        content: response.content,
+        content: cleanedResponse,
         timestamp: new Date(),
         tokenCount: assistantTokens,
       });
@@ -158,10 +206,10 @@ export function wireMessageHandler(transport: TransportConnector): void {
         totalTokens: response.tokenUsage.total,
       });
 
-      // Send response via transport
+      // Send response via transport (user never sees write blocks)
       await transport.send({
         channelId: message.channelId,
-        text: response.content,
+        text: cleanedResponse,
         replyToId: message.id,
       });
     } catch (error) {
