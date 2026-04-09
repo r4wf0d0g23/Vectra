@@ -5,6 +5,9 @@
   "type": "module",
   "main": "dist/src/core/job.js",
   "types": "dist/src/core/job.d.ts",
+  "bin": {
+    "vectra": "dist/src/cli/index.js"
+  },
   "scripts": {
     "build": "tsc",
     "check": "tsc --noEmit",
