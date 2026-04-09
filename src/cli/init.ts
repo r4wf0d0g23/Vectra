@@ -11,7 +11,7 @@
  */
 
 import { createInterface } from 'node:readline/promises';
-import { writeFile, mkdir } from 'node:fs/promises';
+import { writeFile, mkdir, readFile, appendFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { stdin, stdout } from 'node:process';
 
@@ -33,6 +33,7 @@ const DEFAULT_MODELS = {
   t1: 'xai/grok-4-1-fast',
   t2: 'anthropic/claude-sonnet-4-6',
   t3: 'anthropic/claude-opus-4-6',
+  fallback: 'openai/gpt-5.4-mini',
 };
 
 // ─── Provider Registry ──────────────────────────────────────────────
@@ -124,14 +125,15 @@ export async function init(): Promise<void> {
     // 3. Transport-specific config
     const transportConfig: Record<string, unknown> = {};
     const envVars: Record<string, string> = {};
+    let discordBotToken = '';
 
     if (transport === 'discord') {
-      const tokenEnvVar = await askDefault(
-        rl,
-        'Discord bot token env var name: ',
-        'DISCORD_BOT_TOKEN',
-      );
+      const tokenEnvVar = 'DISCORD_BOT_TOKEN'; // silently default — never prompt
       const guildId = await askRequired(rl, 'Discord guild (server) ID: ');
+
+      console.log('\nDiscord bot token (will be stored in .env, not in instance config):');
+      discordBotToken = await askRequired(rl, '> ');
+
       transportConfig.tokenEnvVar = tokenEnvVar;
       transportConfig.guildId = guildId;
       transportConfig.channels = {
@@ -139,7 +141,7 @@ export async function init(): Promise<void> {
         ops: '',
         telemetry: '',
       };
-      envVars[tokenEnvVar] = 'your-discord-bot-token';
+      // Do NOT add the real token to envVars/.env.example — it goes in .env only
     } else if (transport === 'webhook') {
       const port = await askDefault(rl, 'Webhook listen port: ', '18801');
       transportConfig.port = parseInt(port, 10);
@@ -149,27 +151,27 @@ export async function init(): Promise<void> {
     // cli needs no config
 
     // 4. Model assignments
-    console.log('\nModel assignments (press Enter for defaults):');
-    const mainModel = await askDefault(
-      rl,
-      `  Main agent [${DEFAULT_MODELS.main}]: `,
-      DEFAULT_MODELS.main,
-    );
-    const t1Model = await askDefault(
-      rl,
-      `  T1 scanner [${DEFAULT_MODELS.t1}]: `,
-      DEFAULT_MODELS.t1,
-    );
-    const t2Model = await askDefault(
-      rl,
-      `  T2 watcher [${DEFAULT_MODELS.t2}]: `,
-      DEFAULT_MODELS.t2,
-    );
-    const t3Model = await askDefault(
-      rl,
-      `  T3 validator [${DEFAULT_MODELS.t3}]: `,
-      DEFAULT_MODELS.t3,
-    );
+    console.log('\nModel assignments (press Enter to accept defaults):');
+
+    console.log('\n  Main agent — primary AI that responds to messages');
+    console.log(`    Default: ${DEFAULT_MODELS.main}`);
+    const mainModel = await askDefault(rl, '    > ', DEFAULT_MODELS.main);
+
+    console.log('\n  T1 (scanner) — fast/cheap model for periodic background checks');
+    console.log(`    Default: ${DEFAULT_MODELS.t1}`);
+    const t1Model = await askDefault(rl, '    > ', DEFAULT_MODELS.t1);
+
+    console.log('\n  T2 (watcher) — correction model, triggered by T1 findings');
+    console.log(`    Default: ${DEFAULT_MODELS.t2}`);
+    const t2Model = await askDefault(rl, '    > ', DEFAULT_MODELS.t2);
+
+    console.log('\n  T3 (validator) — deep reasoning for hard problems and quality gates');
+    console.log(`    Default: ${DEFAULT_MODELS.t3}`);
+    const t3Model = await askDefault(rl, '    > ', DEFAULT_MODELS.t3);
+
+    console.log('\n  Fallback — used when primary model is unavailable');
+    console.log(`    Default: ${DEFAULT_MODELS.fallback}`);
+    const fallbackModel = await askDefault(rl, '    > ', DEFAULT_MODELS.fallback);
 
     // 5. Provider configuration
     console.log('\n--- Provider Configuration ---\n');
@@ -272,7 +274,7 @@ export async function init(): Promise<void> {
         t1: t1Model,
         t2: t2Model,
         t3: t3Model,
-        fallback: 'openai/gpt-5.4-mini',
+        fallback: fallbackModel,
       },
       transport: {
         type: transport,
@@ -336,6 +338,44 @@ export async function init(): Promise<void> {
     const envPath = resolve('.env.example');
     await writeFile(envPath, envLines.join('\n') + '\n', 'utf-8');
     console.log(`  ✓ ${envPath}`);
+
+    // Write .env with actual Discord bot token (never goes in instance config or .env.example)
+    if (discordBotToken) {
+      const dotEnvPath = resolve('.env');
+      let existingEnv = '';
+      try {
+        existingEnv = await readFile(dotEnvPath, 'utf-8');
+      } catch {
+        // File doesn't exist yet — start fresh
+      }
+
+      if (existingEnv.includes('DISCORD_BOT_TOKEN=')) {
+        const updated = existingEnv.replace(
+          /DISCORD_BOT_TOKEN=.*(?:\r?\n|$)/,
+          `DISCORD_BOT_TOKEN=${discordBotToken}\n`,
+        );
+        await writeFile(dotEnvPath, updated, 'utf-8');
+      } else {
+        const separator = existingEnv && !existingEnv.endsWith('\n') ? '\n' : '';
+        await appendFile(dotEnvPath, `${separator}DISCORD_BOT_TOKEN=${discordBotToken}\n`, 'utf-8');
+      }
+      console.log(`  ✓ .env (DISCORD_BOT_TOKEN written)`);
+    }
+
+    // Ensure .env is in .gitignore
+    const gitignorePath = resolve('.gitignore');
+    let gitignoreContent = '';
+    try {
+      gitignoreContent = await readFile(gitignorePath, 'utf-8');
+    } catch {
+      // File doesn't exist yet
+    }
+    const gitignoreLines = gitignoreContent.split('\n').map((l) => l.trim());
+    if (!gitignoreLines.includes('.env')) {
+      const separator = gitignoreContent && !gitignoreContent.endsWith('\n') ? '\n' : '';
+      await appendFile(gitignorePath, `${separator}.env\n`, 'utf-8');
+      console.log(`  ✓ .gitignore (added .env)`);
+    }
 
     // Summary
     console.log('\n⚓ Instance created successfully!\n');
