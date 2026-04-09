@@ -1,0 +1,83 @@
+{
+  "runAt": "2026-04-09T23:15:50.987Z",
+  "models": [
+    "nemotron-embed@dgx",
+    "all-MiniLM-L6-v2@local"
+  ],
+  "corpusStats": {
+    "documents": 21,
+    "chunks": 54,
+    "queries": 30
+  },
+  "esvs": {
+    "nemotron-embed@dgx": {
+      "version": "eb29870568bd",
+      "dimensions": 2048,
+      "compact": "esp-anchor-v1:eb29870568bd:2048:0.05",
+      "meanDistance": 0.816954,
+      "stdDistance": 0.067822,
+      "anchorCount": 27,
+      "computedAt": "2026-04-09T23:15:50.962Z"
+    },
+    "all-MiniLM-L6-v2@local": {
+      "version": "e2e87b57e223",
+      "dimensions": 384,
+      "compact": "esp-anchor-v1:e2e87b57e223:384:0.05",
+      "meanDistance": 0.893244,
+      "stdDistance": 0.115717,
+      "anchorCount": 27,
+      "computedAt": "2026-04-09T23:15:50.964Z"
+    }
+  },
+  "pairwiseComparisons": [
+    {
+      "modelA": "nemotron-embed@dgx",
+      "modelB": "all-MiniLM-L6-v2@local",
+      "frobeniusDistance": 3.146725,
+      "espVerdict": "incompatible",
+      "espPredictedIncompatible": true,
+      "retrievalOverlapAtK1": 0.8333,
+      "retrievalOverlapAtK3": 0.73,
+      "retrievalOverlapAtK5": 0.6611,
+      "kendallTauAtK10": 0.6299,
+      "actualQualityDivergent": false,
+      "espCorrect": false,
+      "compatibilityProfile": {
+        "architectureDistance": 0.13806140686894797,
+        "retrievalOverlapRisk": 0.31004,
+        "rankingInstabilityRisk": 0.2815954415954416,
+        "downstreamAnswerRisk": null,
+        "calibrationConfidence": "uncalibrated",
+        "labeledPairsUsed": 0,
+        "modelA": "nemotron-embed@dgx",
+        "modelB": "all-MiniLM-L6-v2@local",
+        "anchorSetVersion": "esp-anchor-v1",
+        "measuredAt": "2026-04-09T23:15:50.986Z",
+        "rawFrobeniusDistance": 3.146725279581616,
+        "fingerprintMagnitudes": {
+          "modelA": 21.71989768015522,
+          "modelB": 23.864532479513983
+        },
+        "retrievalMetrics": {
+          "jaccardAtK3": 0.73,
+          "kendallTauAtK10": 0.6299,
+          "queriesEvaluated": 30,
+          "corpusChunks": 54
+        },
+        "dimensions": {
+          "modelA": 2048,
+          "modelB": 384
+        },
+        "operationalVerdict": "caution",
+        "verdictRationale": "Architecturally dissimilar (distance: 0.138), but retrieval overlap is moderate (Jaccard@K3: 0.730). Use with caution, not rejection."
+      }
+    }
+  ],
+  "summary": {
+    "espAccuracy": "0/1 pairs where ESP verdict matched retrieval divergence",
+    "totalPairs": 1,
+    "correctPairs": 0,
+    "divergenceThreshold": "Jaccard@K3 < 0.5",
+    "conclusion": "ESP classified all pairs as incompatible (trivially true for different architectures). The protocol may need threshold recalibration to distinguish degrees of incompatibility."
+  }
+}

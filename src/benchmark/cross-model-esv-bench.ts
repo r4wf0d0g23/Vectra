@@ -9,6 +9,7 @@
 
 import { ANCHOR_TEXTS } from '../embedding/anchor-set.js';
 import { computeESV, compareESV, cosineDistance } from '../embedding/esv.js';
+import { computeCompatibilityProfile, type CompatibilityProfile } from '../embedding/compatibility.js';
 import { Embedder } from '../embedding/embedder.js';
 
 // ─── OpenAI Embedder ────────────────────────────────────────────────
@@ -418,6 +419,7 @@ async function main(): Promise<void> {
     kendallTauAtK10: number;
     actualQualityDivergent: boolean;
     espCorrect: boolean;
+    compatibilityProfile: CompatibilityProfile;
   }
 
   const pairwiseComparisons: PairwiseResult[] = [];
@@ -468,6 +470,18 @@ async function main(): Promise<void> {
       const espPredictedIncompatible = comparison.recommendation === 'incompatible';
       const espCorrect = espPredictedIncompatible === actualQualityDivergent;
 
+      // Compute layered CompatibilityProfile
+      const compatibilityProfile = computeCompatibilityProfile(
+        esvA,
+        esvB,
+        {
+          jaccardAtK3: Math.round(meanOverlap[3] * 1e4) / 1e4,
+          kendallTauAtK10: Math.round(meanTau * 1e4) / 1e4,
+          queriesEvaluated: QUERIES.length,
+          corpusChunks: allChunks.length,
+        },
+      );
+
       pairwiseComparisons.push({
         modelA: a.name,
         modelB: b.name,
@@ -480,6 +494,7 @@ async function main(): Promise<void> {
         kendallTauAtK10: Math.round(meanTau * 1e4) / 1e4,
         actualQualityDivergent,
         espCorrect,
+        compatibilityProfile,
       });
     }
   }

@@ -13,6 +13,7 @@
 
 import { createHash } from 'node:crypto';
 import { compareESV, type ESV } from '../embedding/esv.js';
+import { computeCompatibilityProfile, type CompatibilityProfile } from '../embedding/compatibility.js';
 import type { Embedder } from '../embedding/embedder.js';
 import type { PropositionExtractor } from '../observation/extractor.js';
 
@@ -36,6 +37,8 @@ export interface ESP2Assessment {
   /** True if L1 (runtime) failed. */
   requiresRebaseline: boolean;
   timestamp: string;
+  /** Cross-model compatibility profile. Present when comparing different models. */
+  crossModelProfile?: CompatibilityProfile;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────
@@ -164,29 +167,62 @@ function assessL2(
   };
 }
 
-/** L3: Geometric — ESV fingerprint comparison via compareESV(). */
-function assessL3(currentESV: ESV, baselineESV: ESV): LayerResult {
+/** L3: Geometric — ESV fingerprint comparison.
+ *
+ * For same-model comparisons, uses compareESV() drift detection.
+ * For cross-model comparisons, uses computeCompatibilityProfile() and returns
+ * the profile alongside the layer result.
+ */
+function assessL3(
+  currentESV: ESV,
+  baselineESV: ESV,
+): { result: LayerResult; profile?: CompatibilityProfile } {
   const now = new Date().toISOString();
-  const comparison = compareESV(baselineESV, currentESV);
+  const sameModel = currentESV.modelId === baselineESV.modelId;
 
-  let status: LayerStatus;
-  switch (comparison.recommendation) {
-    case 'compatible':
-      status = 'stable';
-      break;
-    case 'warning':
-      status = 'warning';
-      break;
-    case 'incompatible':
-      status = 'drift';
-      break;
+  if (sameModel) {
+    // Same-model drift detection — existing logic unchanged
+    const comparison = compareESV(baselineESV, currentESV);
+
+    let status: LayerStatus;
+    switch (comparison.recommendation) {
+      case 'compatible':
+        status = 'stable';
+        break;
+      case 'warning':
+        status = 'warning';
+        break;
+      case 'incompatible':
+        status = 'drift';
+        break;
+    }
+
+    return {
+      result: {
+        layer: 'geometric',
+        status,
+        details: `meanDrift=${comparison.meanDrift}, maxDrift=${comparison.maxDrift}, breachedAnchors=${comparison.breachedAnchors}, frobenius=${comparison.frobeniusDistance}`,
+        timestamp: now,
+      },
+    };
   }
 
+  // Cross-model comparison — use CompatibilityProfile
+  const profile = computeCompatibilityProfile(currentESV, baselineESV);
+
+  const status: LayerStatus =
+    profile.operationalVerdict === 'reject' ? 'drift'
+    : profile.operationalVerdict === 'high-risk' ? 'warning'
+    : 'stable';
+
   return {
-    layer: 'geometric',
-    status,
-    details: `meanDrift=${comparison.meanDrift}, maxDrift=${comparison.maxDrift}, breachedAnchors=${comparison.breachedAnchors}, frobenius=${comparison.frobeniusDistance}`,
-    timestamp: now,
+    result: {
+      layer: 'geometric',
+      status,
+      details: `Cross-model: ${profile.operationalVerdict} — ${profile.verdictRationale}`,
+      timestamp: now,
+    },
+    profile,
   };
 }
 
@@ -245,13 +281,16 @@ export async function runESP2Assessment(config: ESP2Config): Promise<ESP2Assessm
   // If explicit anchorTexts are provided, use those.
   const anchorTexts = config.anchorTexts ?? [config.currentText];
 
-  const [l1, l2, l3, l4] = await Promise.all([
+  const [l1, l2, l3result, l4] = await Promise.all([
     Promise.resolve(assessL1(config.modelId, config.baselineESV.modelId)),
     Promise.resolve(assessL2(anchorTexts, config.storedLexicalHash)),
     Promise.resolve(assessL3(config.currentESV, config.baselineESV)),
     assessL4(config.extractor),
   ]);
   const l5 = assessL5();
+
+  const l3 = l3result.result;
+  const crossModelProfile = l3result.profile;
 
   const layers: LayerResult[] = [l1, l2, l3, l4, l5];
   const overall = worstStatus(layers.map((l) => l.status));
@@ -261,11 +300,17 @@ export async function runESP2Assessment(config: ESP2Config): Promise<ESP2Assessm
 
   const requiresRebaseline = l1.status === 'drift';
 
-  return {
+  const assessment: ESP2Assessment = {
     overall,
     layers,
     compatibleForBinaryExchange,
     requiresRebaseline,
     timestamp,
   };
+
+  if (crossModelProfile !== undefined) {
+    assessment.crossModelProfile = crossModelProfile;
+  }
+
+  return assessment;
 }

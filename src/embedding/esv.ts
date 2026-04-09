@@ -49,6 +49,20 @@ export interface ESVComparison {
 
 // ─── Math Utilities ─────────────────────────────────────────────────
 
+/**
+ * Frobenius norm of a matrix: sqrt of sum of all squared elements.
+ * Exported for use in cross-model compatibility computations.
+ */
+export function frobeniusNorm(matrix: number[][]): number {
+  let sum = 0;
+  for (let i = 0; i < matrix.length; i++) {
+    for (let j = 0; j < matrix[i].length; j++) {
+      sum += matrix[i][j] ** 2;
+    }
+  }
+  return Math.sqrt(sum);
+}
+
 /** Dot product of two vectors. */
 function dot(a: number[], b: number[]): number {
   let sum = 0;

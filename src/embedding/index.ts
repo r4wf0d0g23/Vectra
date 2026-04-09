@@ -16,3 +16,5 @@ export type { ESV, ESVComparison } from './esv.js';
 
 export { DriftDetector } from './drift-detector.js';
 export type { DriftReport } from './drift-detector.js';
+
+export * from './compatibility.js';
