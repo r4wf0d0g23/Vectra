@@ -116,7 +116,7 @@ To update your memory files, include a write block BEFORE your response:
 [/VECTRA_WRITE]
 
 Only use write blocks when you learn something genuinely new worth remembering.
-Available files: SOUL.md (your identity), SOULPAIR.md (about your paired human), AGENTS.md (operational rules).`;
+Available files: SOUL.md (your identity), SOULPAIR.md (about your paired human), DEMEANOR.md (how I conduct myself).`;
 
 // ─── Core Components ────────────────────────────────────────────────
 

@@ -539,9 +539,9 @@ async function scaffoldAtpInstance(
   );
 
   await writeFile(
-    join(atpPath, 'AGENTS.md'),
+    join(atpPath, 'DEMEANOR.md'),
     [
-      '# AGENTS.md — Operational Rules',
+      '# DEMEANOR.md — How I Conduct Myself',
       '',
       '## How to Behave',
       '- Read SOUL.md at the start of each session',

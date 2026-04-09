@@ -89,7 +89,7 @@ export class MemoryLoader {
   /**
    * Load full memory context for a session.
    *
-   * Hot-reloads persona files (SOUL.md, SOULPAIR.md, AGENTS.md) from the ATP
+   * Hot-reloads persona files (SOUL.md, SOULPAIR.md, DEMEANOR.md) from the ATP
    * instance directory on every call — files may change between messages.
    *
    * @param _sessionId - Session identifier (reserved for future per-session caching).
@@ -253,12 +253,12 @@ export class MemoryLoader {
   }
 
   /**
-   * Load persona files (SOUL.md, SOULPAIR.md, AGENTS.md) from the ATP instance dir.
+   * Load persona files (SOUL.md, SOULPAIR.md, DEMEANOR.md) from the ATP instance dir.
    * Hot-reloads on every call — never cached.
    * Fails silently on missing/unreadable files.
    */
   private async loadPersonaFiles(): Promise<string> {
-    const personaFiles = ['SOUL.md', 'SOULPAIR.md', 'AGENTS.md'] as const;
+    const personaFiles = ['SOUL.md', 'SOULPAIR.md', 'DEMEANOR.md'] as const;
     const parts: string[] = [];
 
     for (const file of personaFiles) {
