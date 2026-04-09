@@ -94,6 +94,28 @@
           "description": "Interval between heartbeat probes in milliseconds"
         }
       }
+    },
+    "providers": {
+      "type": "object",
+      "description": "Per-provider API config. Keys are provider IDs (anthropic, openai, xai, vllm, openrouter).",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "baseUrl": {
+            "type": "string",
+            "description": "Override default base URL (required for vLLM)"
+          },
+          "envVar": {
+            "type": "string",
+            "description": "Env var name for API key (overrides built-in default)"
+          },
+          "apiKey": {
+            "type": "string",
+            "description": "Direct API key (not recommended — use envVar instead)"
+          }
+        },
+        "additionalProperties": false
+      }
     }
   },
   "additionalProperties": false,

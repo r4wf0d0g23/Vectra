@@ -102,8 +102,9 @@ export class ContextWindowManager {
     // Build summarization prompt
     const summaryPrompt = this.buildSummaryPrompt(toSummarize);
 
-    // Call model for summary
+    // Call model for summary — use the client's default model
     const response = await modelClient.complete(
+      modelClient.defaultModel,
       [
         {
           role: 'system',

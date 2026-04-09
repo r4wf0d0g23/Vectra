@@ -29,6 +29,14 @@
     "standbyEndpoint": "",
     "heartbeatIntervalMs": 30000
   },
+  "providers": {
+    "anthropic": {},
+    "openai": {},
+    "xai": {},
+    "vllm": {
+      "baseUrl": "http://100.78.161.126:8001/v1"
+    }
+  },
   "scheduler": {
     "heartbeat": {
       "intervalMs": 1800000,

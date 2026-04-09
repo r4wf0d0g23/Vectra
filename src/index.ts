@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { SessionStore, defaultDbPath } from './session/store.js';
 import { ContextWindowManager } from './session/context.js';
-import { ModelClient } from './model/client.js';
+import { ModelClient, type ProviderConfig } from './model/client.js';
 import { Scheduler, type CronJobSpec, type HeartbeatSpec } from './scheduler/index.js';
 import type { TransportConnector, InboundMessage } from './transport/interface.js';
 import { loadConfig } from '../config/vectra.config.js';
@@ -25,11 +25,28 @@ const INSTANCE_ID = process.env['VECTRA_INSTANCE_ID'] ?? 'default';
 // Session database path — configurable via env, falls back to ~/.vectra/{instanceId}/sessions.db
 const DB_PATH = process.env['VECTRA_SESSION_DB'] ?? defaultDbPath(INSTANCE_ID);
 
-// Model configuration — API keys from env only
-const MODEL_PROVIDER = process.env['VECTRA_MODEL_PROVIDER'] ?? 'openai';
-const MODEL_NAME = process.env['VECTRA_MODEL_NAME'] ?? config.modelClassAssignments[config.defaultModelClass] ?? 'gpt-4o-mini';
-const MODEL_API_KEY = process.env['VECTRA_MODEL_API_KEY'] ?? process.env['OPENAI_API_KEY'] ?? '';
-const MODEL_BASE_URL = process.env['VECTRA_MODEL_BASE_URL'] ?? undefined;
+// Load instance JSON early (used for providers and scheduler config)
+const _INSTANCE_PATH = process.env['VECTRA_INSTANCE']
+  ?? resolve(import.meta.dirname ?? '.', '../../instances/reality-anchor.instance.json');
+
+interface _BootInstanceShape {
+  models?: { mainAgent?: string };
+  providers?: Record<string, ProviderConfig>;
+  [key: string]: unknown;
+}
+
+let _bootInstance: _BootInstanceShape = {};
+try {
+  _bootInstance = JSON.parse(readFileSync(_INSTANCE_PATH, 'utf-8')) as _BootInstanceShape;
+} catch {
+  process.stderr.write(`[vectra] Could not load instance config from ${_INSTANCE_PATH}\n`);
+}
+
+// Model name — env var overrides instance config, falls back to config default
+const MODEL_NAME = process.env['VECTRA_MODEL_NAME']
+  ?? _bootInstance.models?.mainAgent
+  ?? config.modelClassAssignments[config.defaultModelClass]
+  ?? 'anthropic/claude-sonnet-4-6';
 
 // Context window settings
 const SOFT_THRESHOLD = Number(process.env['VECTRA_CONTEXT_SOFT_THRESHOLD'] ?? '80000');
@@ -44,12 +61,11 @@ const SYSTEM_PROMPT = process.env['VECTRA_SYSTEM_PROMPT'] ??
 
 const store = new SessionStore(DB_PATH);
 const contextMgr = new ContextWindowManager(store, SOFT_THRESHOLD, HARD_LIMIT);
-const modelClient = new ModelClient({
-  provider: MODEL_PROVIDER,
-  model: MODEL_NAME,
-  apiKey: MODEL_API_KEY,
-  baseUrl: MODEL_BASE_URL,
-});
+// Build ModelClient with per-provider config from instance JSON
+const modelClient = new ModelClient(
+  _bootInstance.providers ?? {},
+  MODEL_NAME,
+);
 
 // ─── Message Handler ────────────────────────────────────────────────
 
@@ -85,7 +101,7 @@ export function wireMessageHandler(transport: TransportConnector): void {
       const messages = contextMgr.buildContext(sessionId, SYSTEM_PROMPT, message.text);
 
       // Call model
-      const response = await modelClient.complete(messages);
+      const response = await modelClient.complete(MODEL_NAME, messages);
 
       // Append assistant response
       const assistantTokens = response.tokenUsage.completion || contextMgr.estimateTokens(response.content);
@@ -163,14 +179,10 @@ let scheduler: Scheduler | null = null;
  * Call after core components are ready.
  */
 export function initScheduler(): void {
-  const instancePath = process.env['VECTRA_INSTANCE']
-    ?? resolve(import.meta.dirname ?? '.', '../../instances/reality-anchor.instance.json');
-
-  let instanceConfig: InstanceConfig;
-  try {
-    instanceConfig = JSON.parse(readFileSync(instancePath, 'utf-8')) as InstanceConfig;
-  } catch {
-    process.stderr.write(`[vectra-scheduler] Could not load instance config from ${instancePath}\n`);
+  // Reuse the boot instance JSON already loaded at module startup
+  const instanceConfig: InstanceConfig = _bootInstance;
+  if (Object.keys(instanceConfig).length === 0) {
+    process.stderr.write(`[vectra-scheduler] Could not load instance config from ${_INSTANCE_PATH}\n`);
     return;
   }
 
@@ -266,6 +278,6 @@ export { SessionStore, defaultDbPath } from './session/store.js';
 export { ContextWindowManager } from './session/context.js';
 export { ModelClient } from './model/client.js';
 export type { Message, Session } from './session/store.js';
-export type { ModelResponse, ModelClientConfig } from './model/client.js';
+export type { ModelResponse, ModelClientConfig, ProviderConfig } from './model/client.js';
 export { Scheduler } from './scheduler/index.js';
 export type { CronJobSpec, HeartbeatSpec } from './scheduler/index.js';

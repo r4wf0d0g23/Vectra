@@ -35,7 +35,29 @@ const DEFAULT_MODELS = {
   t3: 'anthropic/claude-opus-4-6',
 };
 
+// ─── Provider Registry ──────────────────────────────────────────────
+
+interface ProviderMenuEntry {
+  id: string;
+  label: string;
+  envVar: string;
+  envHint: string;
+}
+
+const PROVIDER_MENU: ProviderMenuEntry[] = [
+  { id: 'anthropic',  label: 'Anthropic (Claude)',  envVar: 'ANTHROPIC_API_KEY',  envHint: 'your-anthropic-api-key' },
+  { id: 'openai',     label: 'OpenAI',              envVar: 'OPENAI_API_KEY',     envHint: 'your-openai-api-key' },
+  { id: 'xai',        label: 'xAI (Grok)',          envVar: 'XAI_API_KEY',        envHint: 'your-xai-api-key' },
+  { id: 'vllm',       label: 'vLLM (self-hosted)',  envVar: 'VLLM_API_KEY',       envHint: 'optional-if-auth-enabled' },
+  { id: 'openrouter', label: 'OpenRouter',          envVar: 'OPENROUTER_API_KEY', envHint: 'your-openrouter-api-key' },
+];
+
 // ─── Instance Schema ────────────────────────────────────────────────
+
+interface ProviderConfig {
+  baseUrl?: string;
+  envVar?: string;
+}
 
 interface InstanceConfig {
   instanceId: string;
@@ -60,6 +82,7 @@ interface InstanceConfig {
     standbyEndpoint: string;
     heartbeatIntervalMs: number;
   };
+  providers: Record<string, ProviderConfig>;
 }
 
 // ─── Main ───────────────────────────────────────────────────────────
@@ -148,7 +171,63 @@ export async function init(): Promise<void> {
       DEFAULT_MODELS.t3,
     );
 
-    // 5. Autonomy level
+    // 5. Provider configuration
+    console.log('\n--- Provider Configuration ---\n');
+    console.log('Which providers will you use? (select all that apply)\n');
+    PROVIDER_MENU.forEach((p, i) => {
+      const label = `[${i + 1}] ${p.label}`;
+      console.log(`  ${label.padEnd(28)} — requires ${p.envVar}`);
+    });
+    console.log();
+
+    const providerInput = await askDefault(
+      rl,
+      'Enter numbers separated by commas (e.g. 1,3,4): ',
+      '1',
+    );
+
+    const selectedIndexes = providerInput
+      .split(',')
+      .map((s) => parseInt(s.trim(), 10) - 1)
+      .filter((i) => i >= 0 && i < PROVIDER_MENU.length);
+
+    const uniqueIndexes = [...new Set(selectedIndexes)];
+    const selectedProviders = uniqueIndexes.map((i) => PROVIDER_MENU[i]!).filter(Boolean);
+
+    if (selectedProviders.length === 0) {
+      selectedProviders.push(PROVIDER_MENU[0]!);
+      console.log('  → No valid selection — defaulting to Anthropic');
+    } else {
+      console.log(`  → Selected: ${selectedProviders.map((p) => p.label).join(', ')}`);
+    }
+
+    const providersConfig: Record<string, ProviderConfig> = {};
+    const providerEnvVars: Record<string, string> = {};
+
+    for (const provider of selectedProviders) {
+      if (provider.id === 'vllm') {
+        const vllmUrl = await askDefault(
+          rl,
+          '  vLLM endpoint URL (e.g. http://100.78.161.126:8001/v1): ',
+          'http://localhost:8001/v1',
+        );
+        const needsKey = (await askDefault(rl, '  Requires API key? (y/N): ', 'N'))
+          .trim()
+          .toLowerCase();
+        if (needsKey === 'y' || needsKey === 'yes') {
+          providersConfig['vllm'] = { baseUrl: vllmUrl, envVar: 'VLLM_API_KEY' };
+          providerEnvVars['VLLM_API_KEY'] = provider.envHint;
+        } else {
+          // No key required — endpoint URL only, no env var needed
+          providersConfig['vllm'] = { baseUrl: vllmUrl };
+        }
+      } else {
+        providersConfig[provider.id] = {};
+        providerEnvVars[provider.envVar] = provider.envHint;
+      }
+    }
+
+    // 6. Autonomy level
     console.log('\nAutonomy levels:');
     for (const [level, desc] of Object.entries(AUTONOMY_LEVELS)) {
       console.log(`  ${level} — ${desc}`);
@@ -159,7 +238,7 @@ export async function init(): Promise<void> {
       Math.min(5, parseInt(autonomyStr, 10) || 4),
     );
 
-    // 6. ATP instance path
+    // 7. ATP instance path
     console.log('\nATP instance:');
     console.log('  new      — create a blank ATP instance');
     console.log('  existing — point to an existing ATP directory');
@@ -208,6 +287,7 @@ export async function init(): Promise<void> {
         standbyEndpoint: '',
         heartbeatIntervalMs: 30000,
       },
+      providers: providersConfig,
     };
 
     // Write instance config
@@ -240,6 +320,14 @@ export async function init(): Promise<void> {
     if (Object.keys(envVars).length > 0) {
       envLines.push('# Transport');
       for (const [key, hint] of Object.entries(envVars)) {
+        envLines.push(`${key}=${hint}`);
+      }
+      envLines.push('');
+    }
+
+    if (Object.keys(providerEnvVars).length > 0) {
+      envLines.push('# Model providers');
+      for (const [key, hint] of Object.entries(providerEnvVars)) {
         envLines.push(`${key}=${hint}`);
       }
       envLines.push('');
