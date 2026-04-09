@@ -53,8 +53,9 @@ interface _BootInstanceShape {
 let _bootInstance: _BootInstanceShape = {};
 try {
   _bootInstance = JSON.parse(readFileSync(_INSTANCE_PATH, 'utf-8')) as _BootInstanceShape;
-} catch {
+} catch (e) {
   process.stderr.write(`[vectra] Could not load instance config from ${_INSTANCE_PATH}\n`);
+  process.stderr.write(`[vectra] Parse error: ${e}\n`);
 }
 
 // Model name — env var overrides instance config, falls back to config default
