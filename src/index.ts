@@ -1,13 +1,17 @@
 /**
- * Vectra Harness Entry Point — v0.3.0
+ * Vectra Harness Entry Point — v0.4.0
  *
- * Initializes session persistence, model client, and transport.
+ * Initializes session persistence, model client, transport, and scheduler.
  * Wires the message loop: inbound → session history → model call → response → outbound.
+ * Scheduler injects cron/heartbeat messages with senderTrust: 'cron'.
  */
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { SessionStore, defaultDbPath } from './session/store.js';
 import { ContextWindowManager } from './session/context.js';
 import { ModelClient } from './model/client.js';
+import { Scheduler, type CronJobSpec, type HeartbeatSpec } from './scheduler/index.js';
 import type { TransportConnector, InboundMessage } from './transport/interface.js';
 import { loadConfig } from '../config/vectra.config.js';
 
@@ -126,12 +130,122 @@ export function wireMessageHandler(transport: TransportConnector): void {
   });
 }
 
+// ─── Scheduler ──────────────────────────────────────────────────────
+
+interface InstanceSchedulerConfig {
+  heartbeat?: {
+    intervalMs: number;
+    prompt: string;
+    channelId: string;
+    model: string;
+    quietHoursStart?: number;
+    quietHoursEnd?: number;
+  };
+  cronJobs?: Array<{
+    id: string;
+    schedule: string;
+    task: string;
+    channelId: string;
+    model?: string;
+    enabled: boolean;
+  }>;
+}
+
+interface InstanceConfig {
+  scheduler?: InstanceSchedulerConfig;
+  [key: string]: unknown;
+}
+
+let scheduler: Scheduler | null = null;
+
+/**
+ * Initialize the scheduler from instance config.
+ * Call after core components are ready.
+ */
+export function initScheduler(): void {
+  const instancePath = process.env['VECTRA_INSTANCE']
+    ?? resolve(import.meta.dirname ?? '.', '../../instances/reality-anchor.instance.json');
+
+  let instanceConfig: InstanceConfig;
+  try {
+    instanceConfig = JSON.parse(readFileSync(instancePath, 'utf-8')) as InstanceConfig;
+  } catch {
+    process.stderr.write(`[vectra-scheduler] Could not load instance config from ${instancePath}\n`);
+    return;
+  }
+
+  const schedulerConfig = instanceConfig.scheduler;
+  if (!schedulerConfig) {
+    process.stderr.write('[vectra-scheduler] No scheduler config found — disabled\n');
+    return;
+  }
+
+  const cronJobs: CronJobSpec[] = (schedulerConfig.cronJobs ?? []).map((j) => ({
+    id: j.id,
+    schedule: j.schedule,
+    task: j.task,
+    channelId: j.channelId,
+    model: j.model,
+    enabled: j.enabled,
+  }));
+
+  const heartbeat: HeartbeatSpec | undefined = schedulerConfig.heartbeat
+    ? { ...schedulerConfig.heartbeat }
+    : undefined;
+
+  scheduler = new Scheduler(cronJobs, heartbeat);
+
+  // Wire the cron message handler — injects with senderTrust: 'cron'
+  scheduler.onCronMessage(async (channelId: string, text: string, role: 'cron') => {
+    process.stderr.write(`[vectra-cron] Injecting ${role} message to channel ${channelId}\n`);
+
+    const gatewayUrl = config.openclawGatewayUrl;
+    const gatewayToken = config.openclawGatewayToken;
+
+    if (!gatewayUrl || !gatewayToken) {
+      process.stderr.write('[vectra-cron] Cannot inject — gateway URL or token not configured\n');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${gatewayUrl}/tools/invoke`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${gatewayToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          tool: 'sessions_send',
+          args: {
+            sessionKey: `agent:main:discord:channel:${channelId}`,
+            message: text,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const body = await response.text();
+        process.stderr.write(`[vectra-cron] Gateway ${response.status}: ${body}\n`);
+      }
+    } catch (err) {
+      process.stderr.write(`[vectra-cron] Inject failed: ${err instanceof Error ? err.message : String(err)}\n`);
+    }
+  });
+
+  scheduler.start();
+  process.stderr.write(`[vectra-scheduler] Started (${cronJobs.length} cron jobs, heartbeat: ${heartbeat ? 'on' : 'off'})\n`);
+}
+
 // ─── Lifecycle ──────────────────────────────────────────────────────
 
 /**
- * Graceful shutdown — close the session store.
+ * Graceful shutdown — stop scheduler and close the session store.
  */
 export function shutdown(): void {
+  if (scheduler) {
+    scheduler.stop();
+    scheduler = null;
+  }
   store.close();
   process.stderr.write(
     JSON.stringify({
@@ -153,3 +267,5 @@ export { ContextWindowManager } from './session/context.js';
 export { ModelClient } from './model/client.js';
 export type { Message, Session } from './session/store.js';
 export type { ModelResponse, ModelClientConfig } from './model/client.js';
+export { Scheduler } from './scheduler/index.js';
+export type { CronJobSpec, HeartbeatSpec } from './scheduler/index.js';

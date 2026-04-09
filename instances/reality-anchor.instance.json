@@ -28,5 +28,25 @@
     "enabled": false,
     "standbyEndpoint": "",
     "heartbeatIntervalMs": 30000
+  },
+  "scheduler": {
+    "heartbeat": {
+      "intervalMs": 1800000,
+      "prompt": "Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK.",
+      "channelId": "1475311507418910843",
+      "model": "xai/grok-4-1-fast",
+      "quietHoursStart": 23,
+      "quietHoursEnd": 6
+    },
+    "cronJobs": [
+      {
+        "id": "daily-memory-maintenance",
+        "schedule": "0 9 * * *",
+        "task": "Run daily memory maintenance: read today's memory file, promote durable facts to MEMORY.md, update crew state.",
+        "channelId": "1475311507418910843",
+        "model": "xai/grok-4-1-fast",
+        "enabled": true
+      }
+    ]
   }
 }
