@@ -58,8 +58,34 @@ if (command === 'init') {
     console.error(err.stack);
     process.exit(1);
   });
+} else if (command === 'soul-reset') {
+  // Delete the session database so next start is fresh
+  import('node:fs').then(({ existsSync, unlinkSync }) => {
+    import('node:path').then(({ resolve }) => {
+      import('node:os').then(({ homedir }) => {
+        const instanceId = process.argv[3];
+        if (!instanceId) {
+          console.error('[vectra] Usage: vectra soul-reset <instanceId>');
+          console.error('[vectra] Example: vectra soul-reset vectra-prime');
+          process.exit(1);
+        }
+        const dbPath = resolve(homedir(), `.vectra/${instanceId}/sessions.db`);
+        console.warn(`[vectra] WARNING: This will permanently delete all session history for: ${instanceId}`);
+        console.warn(`[vectra] Database path: ${dbPath}`);
+        if (existsSync(dbPath)) {
+          unlinkSync(dbPath);
+          console.log(`[vectra] Session history cleared for: ${instanceId}`);
+          console.log('[vectra] Next start will begin fresh with current soul files.');
+        } else {
+          console.log(`[vectra] No session database found at: ${dbPath}`);
+          console.log('[vectra] Nothing to delete — already clean.');
+        }
+      });
+    });
+  });
 } else {
-  console.log('Usage: vectra [init|start]');
-  console.log('  init   — create a new instance config');
-  console.log('  start  — start Vectra with configured instance');
+  console.log('Usage: vectra [init|start|soul-reset]');
+  console.log('  init              — create a new instance config');
+  console.log('  start             — start Vectra with configured instance');
+  console.log('  soul-reset <id>   — clear session history for an instance (destructive)');
 }
