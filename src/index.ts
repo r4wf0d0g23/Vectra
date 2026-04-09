@@ -110,13 +110,13 @@ const ATP_PATH = (() => {
 const WRITE_PROTOCOL_SUFFIX = `
 
 To update your memory files, include a write block BEFORE your response:
-[VECTRA_WRITE:USER.md]
-# USER.md — About Your User
+[VECTRA_WRITE:SOULPAIR.md]
+# SOULPAIR.md — About Your Paired Human
 [updated content]
 [/VECTRA_WRITE]
 
 Only use write blocks when you learn something genuinely new worth remembering.
-Available files: SOUL.md (your identity), USER.md (about your user), AGENTS.md (operational rules).`;
+Available files: SOUL.md (your identity), SOULPAIR.md (about your paired human), AGENTS.md (operational rules).`;
 
 // ─── Core Components ────────────────────────────────────────────────
 
@@ -134,7 +134,7 @@ const memoryLoader = new MemoryLoader(
   {
     timeWindowDays: 2,
     maxTokens: 8000,
-    sources: ['SOUL.md', 'IDENTITY.md', 'USER.md'],
+    sources: ['SOUL.md', 'IDENTITY.md', 'SOULPAIR.md'],
     mainSessionOnly: ['MEMORY.md'],
   },
 );

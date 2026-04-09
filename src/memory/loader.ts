@@ -10,7 +10,7 @@
  * - Long-term memory: MEMORY.md (main session only — never in shared contexts)
  * - Crew state: ATP var file content
  * - Intake queue: held tasks from atp-instance/intake/
- * - Static context: SOUL.md, IDENTITY.md, USER.md
+ * - Static context: SOUL.md, IDENTITY.md, SOULPAIR.md
  *
  * GUARDRAIL: isMainSession gates MEMORY.md and any mainSessionOnly sources.
  * Shared/group contexts never see personal long-term memory.
@@ -89,7 +89,7 @@ export class MemoryLoader {
   /**
    * Load full memory context for a session.
    *
-   * Hot-reloads persona files (SOUL.md, USER.md, AGENTS.md) from the ATP
+   * Hot-reloads persona files (SOUL.md, SOULPAIR.md, AGENTS.md) from the ATP
    * instance directory on every call — files may change between messages.
    *
    * @param _sessionId - Session identifier (reserved for future per-session caching).
@@ -144,7 +144,7 @@ export class MemoryLoader {
   // ── Private Loaders ─────────────────────────────────────────────
 
   /**
-   * Load static context sources (SOUL.md, IDENTITY.md, USER.md, etc).
+   * Load static context sources (SOUL.md, IDENTITY.md, SOULPAIR.md, etc).
    * Respects mainSessionOnly gating.
    */
   private async loadStaticContext(isMainSession: boolean): Promise<string> {
@@ -253,12 +253,12 @@ export class MemoryLoader {
   }
 
   /**
-   * Load persona files (SOUL.md, USER.md, AGENTS.md) from the ATP instance dir.
+   * Load persona files (SOUL.md, SOULPAIR.md, AGENTS.md) from the ATP instance dir.
    * Hot-reloads on every call — never cached.
    * Fails silently on missing/unreadable files.
    */
   private async loadPersonaFiles(): Promise<string> {
-    const personaFiles = ['SOUL.md', 'USER.md', 'AGENTS.md'] as const;
+    const personaFiles = ['SOUL.md', 'SOULPAIR.md', 'AGENTS.md'] as const;
     const parts: string[] = [];
 
     for (const file of personaFiles) {

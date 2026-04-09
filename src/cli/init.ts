@@ -522,9 +522,9 @@ async function scaffoldAtpInstance(
   );
 
   await writeFile(
-    join(atpPath, 'USER.md'),
+    join(atpPath, 'SOULPAIR.md'),
     [
-      '# USER.md — About Your User',
+      '# SOULPAIR.md — About Your Paired Human',
       '',
       '[Fill this in as you learn about the person you\'re talking to]',
       '',
@@ -545,12 +545,12 @@ async function scaffoldAtpInstance(
       '',
       '## How to Behave',
       '- Read SOUL.md at the start of each session',
-      '- Update USER.md when you learn something new about the user',
+      '- Update SOULPAIR.md when you learn something new about your paired human',
       '- Update SOUL.md when you learn something new about yourself',
       '- Be concise unless asked for detail',
       '',
       '## Memory',
-      '- Write important facts to USER.md or SOUL.md immediately',
+      '- Write important facts to SOULPAIR.md or SOUL.md immediately',
       '- Don\'t rely on remembering — write it down',
       '',
     ].join('\n'),

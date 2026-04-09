@@ -7,7 +7,7 @@
 import { writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-const ALLOWED_FILES = ['SOUL.md', 'USER.md', 'AGENTS.md'] as const;
+const ALLOWED_FILES = ['SOUL.md', 'SOULPAIR.md', 'AGENTS.md'] as const;
 export type PersonaFileName = (typeof ALLOWED_FILES)[number];
 
 export interface FileWriteRequest {
@@ -16,7 +16,7 @@ export interface FileWriteRequest {
 }
 
 /**
- * Write content to a persona file. Only SOUL.md, USER.md, AGENTS.md are allowed.
+ * Write content to a persona file. Only SOUL.md, SOULPAIR.md, AGENTS.md are allowed.
  * Throws on unauthorized file names.
  */
 export function writePersonaFile(atpPath: string, req: FileWriteRequest): void {
