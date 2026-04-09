@@ -1,0 +1,54 @@
+{
+  "runAt": "2026-04-09T21:55:39.918Z",
+  "models": [
+    "nemotron-embed@dgx",
+    "all-MiniLM-L6-v2@local"
+  ],
+  "corpusStats": {
+    "documents": 21,
+    "chunks": 54,
+    "queries": 30
+  },
+  "esvs": {
+    "nemotron-embed@dgx": {
+      "version": "956d33a0a4ba",
+      "dimensions": 2048,
+      "compact": "esp-anchor-v1:956d33a0a4ba:2048:0.05",
+      "meanDistance": 0.816946,
+      "stdDistance": 0.067826,
+      "anchorCount": 27,
+      "computedAt": "2026-04-09T21:55:39.895Z"
+    },
+    "all-MiniLM-L6-v2@local": {
+      "version": "e2e87b57e223",
+      "dimensions": 384,
+      "compact": "esp-anchor-v1:e2e87b57e223:384:0.05",
+      "meanDistance": 0.893244,
+      "stdDistance": 0.115717,
+      "anchorCount": 27,
+      "computedAt": "2026-04-09T21:55:39.898Z"
+    }
+  },
+  "pairwiseComparisons": [
+    {
+      "modelA": "nemotron-embed@dgx",
+      "modelB": "all-MiniLM-L6-v2@local",
+      "frobeniusDistance": 3.146826,
+      "espVerdict": "incompatible",
+      "espPredictedIncompatible": true,
+      "retrievalOverlapAtK1": 0.8333,
+      "retrievalOverlapAtK3": 0.73,
+      "retrievalOverlapAtK5": 0.6611,
+      "kendallTauAtK10": 0.6299,
+      "actualQualityDivergent": false,
+      "espCorrect": false
+    }
+  ],
+  "summary": {
+    "espAccuracy": "0/1 pairs where ESP verdict matched retrieval divergence",
+    "totalPairs": 1,
+    "correctPairs": 0,
+    "divergenceThreshold": "Jaccard@K3 < 0.5",
+    "conclusion": "ESP classified all pairs as incompatible (trivially true for different architectures). The protocol may need threshold recalibration to distinguish degrees of incompatibility."
+  }
+}
