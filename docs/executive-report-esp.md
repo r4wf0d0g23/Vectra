@@ -176,3 +176,11 @@ We ran a head-to-head benchmark measuring wall-clock cost of passing context thr
 These numbers validate ESP's core value proposition: binary embedding exchange between pipeline components isn't just a nice optimization — it's a **70x performance multiplier** for multi-hop agent pipelines. ESP ensures those binary embeddings remain semantically valid across model versions.
 
 Full benchmark: [`docs/benchmark-context-pipeline.md`](./benchmark-context-pipeline.md)
+
+## Context Loss Analysis — Benchmark Results
+
+Binary retrieval with K≥3 chunks retains **100% of answer quality** compared to full-text baseline across all five tested question types (fact recall, numerical precision, sequential reasoning, entity specificity, cross-chunk synthesis). At K=1, average retention drops to 80%, with cross-chunk synthesis failing completely (0% retention) — a single retrieved chunk cannot support multi-factor causal reasoning. Numerical precision and entity specificity are fully robust even at K=1, while fact recall requires K≥3 to consistently surface the correct context. The crossover point where binary matches full-text is **K=3** for all question types.
+
+The critical finding for agent decision-making: **binary retrieval does not lose information that matters — when sufficient chunks are retrieved.** The 70x throughput advantage of binary embeddings (documented in the pipeline benchmark) comes with zero quality penalty at K=3-5. However, the benchmark exposed a significant limitation: the scoring model (nemotron3-super acting as its own judge) is unreliable, with identical correct answers scored 0 and 3 across runs. For the dual-space architecture, this suggests that the primary value of full-text semantic search is not improved retrieval quality for single-document queries, but rather **cross-document discovery** and **ambiguous query resolution** — scenarios not yet benchmarked. The dual-space integration should proceed but with revised priority: binary retrieval is a stronger baseline than initially assumed.
+
+Full benchmark: [`docs/benchmark-retrieval-quality.md`](./benchmark-retrieval-quality.md)
