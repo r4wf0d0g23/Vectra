@@ -14,6 +14,9 @@ import { ANCHOR_TEXTS } from '../embedding/anchor-set.js';
 import { computeESV } from '../embedding/esv.js';
 import { computeCompatibilityProfile, type CompatibilityProfile } from '../embedding/compatibility.js';
 import { Embedder } from '../embedding/embedder.js';
+import { mergePairs, CalibrationStore } from '../embedding/calibration-store.js';
+import { runOptimizer } from '../embedding/threshold-optimizer.js';
+import type { CalibrationPair as StoredCalibrationPair } from '../embedding/types.js';
 
 // ─── Fetch with timeout + retry ──────────────────────────────────────
 
@@ -469,6 +472,76 @@ async function main(): Promise<void> {
         : `Insufficient labeled pairs (n=${measuredPairs.length}) to determine correlation. More pairs required.`,
     },
   };
+
+  // ── Optional: store results in calibration store ─────────────────────────
+  const storeResults = process.env['STORE_RESULTS'] === '1' || process.argv.includes('--store');
+
+  if (storeResults) {
+    console.error('\n=== Storing calibration pairs ===');
+
+    // Compute corpus ID from chunk texts
+    const corpusId = CalibrationStore.computeCorpusId(allChunks);
+
+    const pairsToStore: StoredCalibrationPair[] = [];
+
+    for (const benchPair of measuredPairs) {
+      const profile = benchPair.profile!;
+      const pairId = CalibrationStore.computeId(benchPair.modelA, benchPair.modelB, corpusId);
+
+      const storedPair: StoredCalibrationPair = {
+        id: pairId,
+        modelA: benchPair.modelA,
+        modelB: benchPair.modelB,
+        corpusId,
+        corpusChunks: profile.retrievalMetrics?.corpusChunks ?? allChunks.length,
+        queriesEvaluated: profile.retrievalMetrics?.queriesEvaluated ?? QUERIES.length,
+        jaccardAtK3: profile.retrievalMetrics?.jaccardAtK3 ?? 0,
+        kendallTauAtK10: profile.retrievalMetrics?.kendallTauAtK10 ?? 0,
+        architectureDistance: profile.architectureDistance,
+        rankingInstabilityRisk: profile.rankingInstabilityRisk,
+        retrievalOverlapRisk: profile.retrievalOverlapRisk ?? 0,
+        perQueryRankings: null,
+        actuallyDivergent: (profile.retrievalMetrics?.jaccardAtK3 ?? 1) < 0.5,
+        divergenceMethod: 'inferred-from-jaccard',
+        judgeModel: null,
+        divergenceThreshold: 0.5,
+        measuredAt: profile.measuredAt,
+        calibrationVersion: 'v1-benchmark',
+        benchmarkScript: 'calibration-pairs-bench.ts',
+        fingerprintMagnitudes: profile.fingerprintMagnitudes,
+        dimensions: profile.dimensions,
+        isOutlier: false,
+      };
+
+      pairsToStore.push(storedPair);
+    }
+
+    const { added, updated, triggered } = mergePairs(pairsToStore);
+    const totalInStore = pairsToStore.length;
+    console.error(`Stored ${added} new + ${updated} updated pairs to calibration store (total active: ${totalInStore})`);
+
+    for (let i = 0; i < pairsToStore.length; i++) {
+      const p = pairsToStore[i]!;
+      console.error(`  Stored pair ${i + 1}: ${p.modelA} vs ${p.modelB} (id: ${p.id})`);
+    }
+
+    if (triggered) {
+      console.error('\nCALIBRATION_TRIGGER: running threshold optimizer...');
+      try {
+        const optimizerResult = await runOptimizer();
+        console.error(`Optimizer result: action=${optimizerResult.action}, reason=${optimizerResult.reason}`);
+        console.error(`  CBs triggered: ${optimizerResult.circuitBreakersTriggered.join(', ') || 'none'}`);
+        if (optimizerResult.newParams) {
+          console.error(`  New params: wJ=${optimizerResult.newParams.wJaccard}, tT=${optimizerResult.newParams.tTransparent}, tH=${optimizerResult.newParams.tHighRisk}, tR=${optimizerResult.newParams.tReject}`);
+        }
+        console.error('OPTIMIZER_TRIGGERED');
+      } catch (err) {
+        console.error(`Optimizer error: ${(err as Error).message}`);
+      }
+    } else {
+      console.error('Trigger condition not met — optimizer not run');
+    }
+  }
 
   console.log(JSON.stringify(result, null, 2));
 }

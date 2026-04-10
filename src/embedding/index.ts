@@ -18,3 +18,7 @@ export { DriftDetector } from './drift-detector.js';
 export type { DriftReport } from './drift-detector.js';
 
 export * from './compatibility.js';
+export * from './types.js';
+export * from './calibration-store.js';
+export * from './esp-params.js';
+export * from './threshold-optimizer.js';

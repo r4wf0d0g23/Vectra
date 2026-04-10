@@ -1,0 +1,103 @@
+{
+  "schemaVersion": "1.0.0",
+  "pairs": [
+    {
+      "id": "5bd5a2ea3e9bf66e",
+      "modelA": "nemotron-embed@dgx",
+      "modelB": "nemotron-embed@dgx",
+      "corpusId": "benchmark-v1",
+      "corpusChunks": 28,
+      "queriesEvaluated": 15,
+      "jaccardAtK3": 1,
+      "kendallTauAtK10": 1,
+      "architectureDistance": 0,
+      "rankingInstabilityRisk": 0,
+      "retrievalOverlapRisk": 0,
+      "perQueryRankings": null,
+      "actuallyDivergent": false,
+      "divergenceMethod": "inferred-from-jaccard",
+      "judgeModel": null,
+      "divergenceThreshold": 0.5,
+      "measuredAt": "2026-04-09T23:41:10.302Z",
+      "calibrationVersion": "v0-hardcoded",
+      "benchmarkScript": "calibration-pairs-bench.ts",
+      "fingerprintMagnitudes": {
+        "modelA": 21.71989768015522,
+        "modelB": 21.71989768015522
+      },
+      "dimensions": {
+        "modelA": 2048,
+        "modelB": 2048
+      },
+      "isOutlier": false
+    },
+    {
+      "id": "5a9b677447b2ba87",
+      "modelA": "all-MiniLM-L6-v2@local",
+      "modelB": "all-MiniLM-L6-v2@local",
+      "corpusId": "benchmark-v1",
+      "corpusChunks": 28,
+      "queriesEvaluated": 15,
+      "jaccardAtK3": 1,
+      "kendallTauAtK10": 1,
+      "architectureDistance": 0,
+      "rankingInstabilityRisk": 0,
+      "retrievalOverlapRisk": 0,
+      "perQueryRankings": null,
+      "actuallyDivergent": false,
+      "divergenceMethod": "inferred-from-jaccard",
+      "judgeModel": null,
+      "divergenceThreshold": 0.5,
+      "measuredAt": "2026-04-09T23:41:11.190Z",
+      "calibrationVersion": "v0-hardcoded",
+      "benchmarkScript": "calibration-pairs-bench.ts",
+      "fingerprintMagnitudes": {
+        "modelA": 23.864532479513983,
+        "modelB": 23.864532479513983
+      },
+      "dimensions": {
+        "modelA": 384,
+        "modelB": 384
+      },
+      "isOutlier": false
+    },
+    {
+      "id": "50b18f0d9c2c73b4",
+      "modelA": "nemotron-embed@dgx",
+      "modelB": "all-MiniLM-L6-v2@local",
+      "corpusId": "benchmark-v1",
+      "corpusChunks": 28,
+      "queriesEvaluated": 15,
+      "jaccardAtK3": 0.7,
+      "kendallTauAtK10": 0.6667,
+      "architectureDistance": 0.13806140686894797,
+      "rankingInstabilityRisk": 0.2815954415954416,
+      "retrievalOverlapRisk": 0.31332000000000004,
+      "perQueryRankings": null,
+      "actuallyDivergent": false,
+      "divergenceMethod": "inferred-from-jaccard",
+      "judgeModel": null,
+      "divergenceThreshold": 0.5,
+      "measuredAt": "2026-04-09T23:41:11.203Z",
+      "calibrationVersion": "v0-hardcoded",
+      "benchmarkScript": "calibration-pairs-bench.ts",
+      "fingerprintMagnitudes": {
+        "modelA": 21.71989768015522,
+        "modelB": 23.864532479513983
+      },
+      "dimensions": {
+        "modelA": 2048,
+        "modelB": 384
+      },
+      "isOutlier": false
+    }
+  ],
+  "lastUpdated": "2026-04-09T23:41:11Z",
+  "pairCount": 3,
+  "bandCounts": {
+    "transparent": 2,
+    "caution": 1,
+    "high-risk": 0,
+    "reject": 0
+  }
+}

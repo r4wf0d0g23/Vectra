@@ -386,3 +386,4 @@ export { Scheduler } from './scheduler/index.js';
 export type { CronJobSpec, HeartbeatSpec } from './scheduler/index.js';
 export * from './observation/index.js';
 export * from './esp/layers.js';
+export * from './atp/execution-recorder.js';
