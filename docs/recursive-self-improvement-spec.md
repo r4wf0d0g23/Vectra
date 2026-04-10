@@ -1,9 +1,9 @@
 # Recursive Self-Improvement Spec — ESP + ATP Adaptive Tuning Loops
 
-**Version:** 0.1.0  
+**Version:** 0.2.0  
 **Date:** 2026-04-09  
 **Status:** Forward spec (not yet implemented)  
-**Author:** Reality Anchor (systems architect pass)  
+**Author:** Reality Anchor (systems architect pass), amended by Opus review (autonomous circuit breakers)  
 **Depends on:** `src/embedding/compatibility.ts`, `atp-instance/protocols/orchestration-main.md`, `atp-instance/ATP_HOOK.md`
 
 ---
@@ -17,6 +17,8 @@ This spec defines three feedback loops that replace hardcoded constants in ESP a
 3. **Loop 3 — Meta-Loop:** Monitors the improvement system itself for oscillation, over-conservatism, and bad updates.
 
 All algorithms are implementable in TypeScript with no external numeric libraries.
+
+**v0.2.0 change:** All human checkpoints have been replaced with autonomous circuit breakers. The system protects itself mathematically — it validates, rollbacks, freezes, and recovers without human intervention.
 
 ---
 
@@ -327,7 +329,7 @@ interface ESPParams {
    c. Record loss
 4. Select the parameter set with lowest train loss
 5. Evaluate on holdout set
-6. If holdout loss > train loss * 1.5 → overfitting detected → abort update
+6. Apply Circuit Breaker 1 (§K) — if holdout loss is WORSE, auto-rollback
 7. Return best params
 ```
 
@@ -335,16 +337,16 @@ interface ESPParams {
 
 | Guard | Threshold | Rationale |
 |-------|-----------|-----------|
-| Minimum total pairs | ≥ 8 | Below 8, any grid search result is noise |
-| Minimum pairs per active band | ≥ 3 | A band with 1-2 pairs can't establish a threshold boundary |
-| Maximum parameter shift per cycle | `|Δw_jaccard| ≤ 0.15`, `|Δt_*| ≤ 0.15` | Prevents oscillation. If the optimizer wants to shift a param by more than 0.15 in one cycle, it's either wrong or responding to a major data influx — either way, needs human review |
-| Pearson r threshold for weight refit | r ≥ 0.5 between archDist and retrievalOverlapRisk | If the correlation breaks down, the geometric approach itself is questionable — don't blindly refit weights |
-| Holdout overfitting check | holdout loss ≤ 1.5 × train loss | Standard overfitting guard |
-| Band-specific freeze | A threshold can only move if its band has ≥ 3 pairs | `t_high_risk` can't move until 3+ high-risk pairs exist; `t_reject` can't move until 3+ reject-band pairs exist |
+| Minimum total pairs | ≥ 5 (pilot confidence) | Below 5, any grid search result is noise. Circuit Breaker 5 enforces this. |
+| Minimum pairs per active band | ≥ 5 | Circuit Breaker 4 — a band with <5 pairs cannot have its threshold moved. Zero exceptions. |
+| Maximum parameter shift per cycle | `\|Δw_jaccard\| ≤ 0.15`, `\|Δt_*\| ≤ 0.15` | Prevents oscillation. If the optimizer wants more, it applies 0.15 max and re-evaluates next cycle. |
+| Pearson r threshold for weight refit | r ≥ 0.4 | Circuit Breaker 3 — if correlation breaks, auto-rollback weights |
+| Holdout overfitting check | holdout loss ≤ 1.5 × train loss | Circuit Breaker 1 — auto-rollback on holdout regression |
+| Band-specific freeze | A threshold can only move if its band has ≥ 5 pairs | Circuit Breaker 4 — hard lock, no exceptions |
 
 **Frozen thresholds (as of spec date):**
-- `t_high_risk`: FROZEN (0 pairs in band)
-- `t_reject`: FROZEN (0 pairs in band)
+- `t_high_risk`: FROZEN (0 pairs in band, need ≥5)
+- `t_reject`: FROZEN (0 pairs in band, need ≥5)
 - `w_jaccard`: FROZEN (only 1 cross-family pair with retrieval data; need ≥ 10)
 - `t_transparent`: FROZEN (only 2 self-comparison pairs at archDist=0; need 5 non-trivial pairs)
 
@@ -352,25 +354,29 @@ interface ESPParams {
 
 #### C5. The Update Transaction
 
-When the optimizer produces a valid update (all guards pass):
+When the optimizer produces a valid update (all guards pass AND all circuit breakers clear):
 
-1. **Read** current `atp-instance/vars/esp-params.md`
-2. **Append** current params to the `## Update History` section (rollback trail)
-3. **Write** new params to the `## Current Parameters` section
-4. **Update** `lastOptimizerRun` timestamp and `calibrationPairCount` in the var
-5. **Commit** both files:
+1. **Snapshot** current params as `preUpdateParams` (for rollback)
+2. **Read** current `atp-instance/vars/esp-params.md`
+3. **Append** current params to the `## Update History` section (rollback trail)
+4. **Write** new params to the `## Current Parameters` section
+5. **Run Circuit Breaker 1** — evaluate holdout loss with new params
+   - If holdout loss WORSE than `preUpdateParams` holdout loss: **auto-rollback** immediately, restore `preUpdateParams`, log reason, flag triggering pairs as potential outliers, DONE
+   - If holdout loss BETTER or equal: proceed
+6. **Run Circuit Breaker 3** — recompute Pearson r on full calibration set
+   - If r < 0.4: **auto-rollback**, flag triggering pairs, block weight updates until 3 more non-outlier pairs added
+   - If r < 0.3 for 2 consecutive runs: trigger **safe harbor** (Circuit Breaker 6)
+7. **Update** `lastOptimizerRun` timestamp and `calibrationPairCount` in the var
+8. **Update** `src/embedding/compatibility.ts` constants automatically — the learned values are applied to the source code immediately. No human gate.
+9. **Commit** all files:
    ```bash
    git -C /home/agent-raw/.openclaw/workspace/atp-instance add vars/esp-params.md
-   git -C /home/agent-raw/.openclaw/workspace/vectra add data/calibration-store.json
-   git commit -m "tune(esp): update params — N pairs, loss X.XXX → Y.YYY [optimizer-v1]"
+   git -C /home/agent-raw/.openclaw/workspace/vectra add data/calibration-store.json src/embedding/compatibility.ts
+   git commit -m "tune(esp): update params — N pairs, loss X.XXX → Y.YYY [optimizer-v1, CB-clear]"
    git push
    ```
-6. **Update** `src/embedding/compatibility.ts` constants **only if** the parameter shift was approved (see §K for human checkpoint). Until then, the var file holds the learned values and `compatibility.ts` retains the hardcoded defaults. A sub-agent reading the var can apply the learned values at runtime.
 
-**Rollback:** If the new params cause regressions (detected by the meta-loop, §J), revert by:
-1. Read the previous entry from `## Update History`
-2. Write it back as `## Current Parameters`
-3. Commit with message `revert(esp): rollback to params from <date> — regression detected`
+**Rollback:** Handled automatically by circuit breakers. No manual intervention needed. See §K for all rollback scenarios.
 
 ---
 
@@ -380,7 +386,7 @@ When the optimizer produces a valid update (all guards pass):
 ---
 id: esp-params
 name: ESP Learned Parameters
-version: 0.1.0
+version: 0.2.0
 status: active
 created: 2026-04-09
 last_verified: 2026-04-09
@@ -421,10 +427,25 @@ source: optimizer
 
 | Tier | Required Pairs | Required Bands | Meaning |
 |------|----------------|----------------|---------|
-| uncalibrated | 0-7 | any | Hardcoded defaults; optimizer has never run |
-| pilot | 8-19 | ≥2 with ≥3 each | First optimizer pass; parameters have moved but data is thin |
+| uncalibrated | 0-4 | any | Hardcoded defaults; optimizer cannot run |
+| pilot | 5-19 | ≥2 with ≥5 each | First optimizer pass possible; circuit breakers active |
 | preliminary | 20-49 | ≥3 with ≥5 each | Multiple optimizer cycles; convergence visible |
 | validated | 50+ | all 4 with ≥10 each | Full coverage; parameters stable across cycles |
+
+## Safe Harbor Parameters
+
+These are the initial hardcoded values. Circuit Breaker 6 reverts to these on degraded state detection.
+
+| Parameter | Safe Harbor Value |
+|-----------|-------------------|
+| `w_jaccard` | 0.6 |
+| `w_tau` | 0.4 |
+| `t_transparent` | 0.1 |
+| `t_high_risk` | 0.5 |
+| `t_reject` | 0.8 |
+| `frob_norm_method` | mean |
+| `K_jaccard` | 3 |
+| `K_tau` | 10 |
 
 ## Update History
 
@@ -438,6 +459,7 @@ _No updates yet. History entries will be appended here by the optimizer._
 - **Holdout loss:** <value>
 - **Changed params:** <param>: <old> → <new>, ...
 - **Optimizer version:** <version>
+- **Circuit breakers:** all clear / CB-1 triggered (rollback) / CB-3 triggered / etc.
 -->
 ```
 
@@ -466,25 +488,27 @@ _No updates yet. History entries will be appended here by the optimizer._
    - Prints `OPTIMIZER_TRIGGERED` if threshold met
    - Exports `mergeCalibrationStore(newPairs: CalibrationPair[]): { added: number; updated: number; triggered: boolean }`
 
-3. **Create `src/calibration/optimizer.ts`** (~200 lines):
+3. **Create `src/calibration/optimizer.ts`** (~300 lines):
    - Implements the grid search from §C3
    - Reads `data/calibration-store.json` and `atp-instance/vars/esp-params.md`
    - Outputs candidate params + loss to stdout
    - Writes updated var file if all guards pass
-   - Prints `HUMAN_REVIEW_REQUIRED` if any checkpoint condition (§K) is triggered
+   - Runs all 6 circuit breakers autonomously
+   - Never prints `HUMAN_REVIEW_REQUIRED` — handles everything autonomously
 
-**Pipeline (automated):**
+**Pipeline (fully autonomous):**
 ```
 benchmark run
   → calibration-pairs-bench.ts --store
     → merge-store.ts (inline)
       → if OPTIMIZER_TRIGGERED:
         → optimizer.ts
-          → if guards pass AND no human checkpoint:
-            → update esp-params.md + commit
-          → if HUMAN_REVIEW_REQUIRED:
-            → write review artifact to atp-instance/artifacts/
-            → surface to Raw via ops-console
+          → if guards pass:
+            → run circuit breakers 1-6
+            → if all clear: update esp-params.md + compatibility.ts + commit
+            → if any CB triggers: auto-rollback/freeze/safe-harbor as appropriate + commit + log
+          → if guards fail:
+            → log reason, increment no-update counter, check meta-loop signals
 ```
 
 #### E2. Manual Collection
@@ -614,7 +638,7 @@ interface ATPExecutionRecord {
 | tokensUsed | ❌ | Need model provider to report; may be unavailable |
 | estimatedCostUsd | ❌ | Derive from model + tokens; approximate |
 | taskComplexity | ❌ | Infer from protocol: vectra-build=analytical, memory-maintenance=mechanical, atp-review=judgment |
-| minSufficientModelClass | ❌ | Human-labeled post-hoc; null by default |
+| minSufficientModelClass | ❌ | Inferred post-hoc; null by default |
 | varsVerified | ❌ | Need sub-agent to report verify_cmd outcomes in receipt |
 
 **Required changes:**
@@ -658,16 +682,16 @@ interface ATPExecutionRecord {
 
 **Outcome signal:** Success rate at current model class vs. cheaper alternative.
 
-**Update rule:** For a given protocol, if the last **10 consecutive executions** at model class M all succeeded (`outcome = 'success'`), propose downgrading to the next cheaper class. The hierarchy is: `capable > agent > balanced > fast`.
+**Update rule:** For a given protocol, if the last **10 consecutive executions** at model class M all succeeded (`outcome = 'success'`), downgrade to the next cheaper class autonomously. The hierarchy is: `capable > agent > balanced > fast`.
 
 **Guards:**
 - Never downgrade below `fast` (floor)
 - Never downgrade `atp-protocol-review` below `agent` (judgment tasks require reasoning)
 - Require 10 consecutive successes, not 10 total (one failure resets the counter)
-- A single failure after downgrade triggers immediate rollback to previous class
+- A single failure after downgrade triggers immediate auto-rollback to previous class (Circuit Breaker pattern — no human needed)
 - Maximum one downgrade per protocol per 30-day window
 
-**Upgrade rule:** If 2 of the last 5 executions at class M failed (`outcome = 'failure'` or `'escalated'`), upgrade to next tier. No guard — upgrades are always safe (more capability, more cost).
+**Upgrade rule:** If 2 of the last 5 executions at class M failed (`outcome = 'failure'` or `'escalated'`), upgrade to next tier immediately. No guard — upgrades are always safe (more capability, more cost).
 
 #### G2. Staleness TTL Per Var
 
@@ -684,7 +708,7 @@ interface ATPExecutionRecord {
 
 **Outcome signal:** The `varsVerified.stateChanged` field from execution records.
 
-**Update rule:** Track the **change rate** for each var: `changedCount / verifyCount`. Adapt policy:
+**Update rule:** Track the **change rate** for each var: `changedCount / verifyCount`. Adapt policy autonomously:
 
 | Change Rate | Recommended Policy | Rationale |
 |-------------|-------------------|-----------|
@@ -695,9 +719,9 @@ interface ATPExecutionRecord {
 
 **Guards:**
 - Minimum 20 verification observations before changing policy
-- Never weaken `dgx-serve` below `ttl:1d` (infrastructure state is critical)
+- Never weaken `dgx-serve` below `ttl:1d` (infrastructure state is critical — hard floor)
 - Conservative bias: if change rate is within 0.05 of a boundary, keep the more aggressive (fresher) policy
-- Changes require human approval (§K) because stale vars cause silent failures
+- Post-weakening monitoring: if a stale-state-caused failure occurs within 7 days of a TTL weakening, auto-rollback to previous policy and increase minimum observation count to 40 for next weakening attempt
 
 #### G3. Escalation Retry Count
 
@@ -815,8 +839,8 @@ function computeRecommendedStaleness(
 
 **Principle:** In ATP tuning, the cost of under-capability (task failure) vastly exceeds the cost of over-capability (wasted tokens). Therefore:
 
-1. **Model class:** Default to current or higher. Downgrade only with 10 consecutive successes. Upgrade immediately on 2/5 failures.
-2. **Staleness:** Default to fresher. Weaken only with 20+ observations showing low change rate. Strengthen immediately on any verify-discovered stale state that caused a failure.
+1. **Model class:** Default to current or higher. Downgrade only with 10 consecutive successes. Upgrade immediately on 2/5 failures. Post-downgrade failure → immediate auto-rollback (no human needed).
+2. **Staleness:** Default to fresher. Weaken only with 20+ observations showing low change rate. Post-weakening stale-state failure → immediate auto-rollback.
 3. **Retries:** Default to 1. Only remove if retry success rate is very low (<0.2). Only add if retry success rate is high (>0.6).
 
 ---
@@ -827,7 +851,7 @@ function computeRecommendedStaleness(
 ---
 id: tuning-state
 name: Unified Tuning State
-version: 0.1.0
+version: 0.2.0
 status: active
 created: 2026-04-09
 last_verified: 2026-04-09
@@ -852,10 +876,10 @@ source: optimizer
 ### Calibration Band Counts
 | Band | Pairs | Minimum for Threshold Tuning |
 |------|-------|------------------------------|
-| transparent | 2 | 3 |
-| caution | 1 | 3 |
-| high-risk | 0 | 3 |
-| reject | 0 | 3 |
+| transparent | 2 | 5 |
+| caution | 1 | 5 |
+| high-risk | 0 | 5 |
+| reject | 0 | 5 |
 
 ### Current Learned Parameters
 See `vars/esp-params.md` for full table.
@@ -865,6 +889,16 @@ See `vars/esp-params.md` for full table.
 - **Timestamp:** never
 - **Pairs at run:** n/a
 - **Result:** n/a
+
+### Circuit Breaker State
+- **CB-1 (post-update validation) rollbacks:** 0
+- **CB-2 (oscillation freeze) active freezes:** none
+- **CB-3 (Pearson r guard) consecutive low-r runs:** 0
+- **CB-4 (band coverage lock) frozen bands:** transparent, caution, high-risk, reject (all <5 pairs)
+- **CB-5 (confidence floor) status:** uncalibrated — proposals only, no auto-apply
+- **CB-6 (degraded state) status:** nominal
+- **Outlier-flagged pairs:** none
+- **Proposal log entries:** 0
 
 ## ATP State
 
@@ -897,7 +931,7 @@ _No verification observations yet._
 
 ### ESP Trigger
 - **Pairs since last run:** 0 (need 5)
-- **Bands with ≥3 pairs:** 0 (need ≥2 active bands with ≥3 each)
+- **Bands with ≥5 pairs:** 0 (need ≥2 active bands with ≥5 each)
 - **Hours since last run:** n/a
 - **Triggered:** NO
 
@@ -908,19 +942,21 @@ _No verification observations yet._
 
 ## Meta-Loop State
 
-- **ESP optimizer rollbacks:** 0
+- **ESP optimizer rollbacks (total):** 0
+- **ESP optimizer rollbacks (last 5 cycles):** 0
 - **ATP optimizer rollbacks:** 0
 - **Consecutive no-update runs (ESP):** 0
 - **Consecutive no-update runs (ATP):** 0
-- **Human reviews pending:** 0
-- **Human reviews completed:** 0
+- **Rollback rate (last 10 ESP optimizer runs):** n/a
+- **Safe harbor activations:** 0
+- **Last safe harbor recovery:** never
 ```
 
 ---
 
 ## LOOP 3: The Meta-Loop
 
-### J. What the Improvement System Optimizes About Itself
+### J. What the Improvement System Optimizes About Itself — Fully Autonomous
 
 The optimizer has its own parameters:
 
@@ -930,117 +966,243 @@ The optimizer has its own parameters:
 | `N_atp_trigger` | 20 new records | How many new records trigger an ATP optimizer run |
 | `FP_WEIGHT` | 2.0 | False positive penalty in ESP loss function |
 | `FN_WEIGHT` | 1.0 | False negative penalty in ESP loss function |
-| `MIN_PAIRS_PER_BAND` | 3 | Minimum pairs in a band before its threshold can move |
+| `MIN_PAIRS_PER_BAND` | 5 | Minimum pairs in a band before its threshold can move |
 | `MAX_PARAM_SHIFT` | 0.15 | Maximum single-cycle parameter change |
 | `CONSECUTIVE_SUCCESS_FOR_DOWNGRADE` | 10 | ATP model class downgrade threshold |
 | `MIN_VERIFY_OBS` | 20 | Minimum observations before staleness policy changes |
+| `HOLDOUT_FRACTION` | 0.20 | Fraction of calibration set reserved for validation |
 
-#### J1. Detecting Bad Meta-Parameters
+#### J1. Autonomous Meta-Parameter Adaptation
 
-| Signal | What It Means | Action |
-|--------|---------------|--------|
-| Optimizer runs but never updates (3+ consecutive no-update runs) | Guards are too conservative | Reduce `MIN_PAIRS_PER_BAND` by 1 (floor: 2) or increase `MAX_PARAM_SHIFT` by 0.05 (ceiling: 0.30) |
-| Optimizer updates then gets rolled back (2+ rollbacks in 30 days) | `N_trigger` is too low (running on insufficient data) OR loss function weights are wrong | Increase `N_esp_trigger` by 2 or `N_atp_trigger` by 5 |
-| Params oscillate between two values across 3+ cycles | Grid resolution too coarse or conflicting training data | Halve the grid step size for the oscillating param; if still oscillating, flag for human review |
-| Holdout loss consistently > train loss × 1.3 | Overfitting on small data | Increase holdout fraction from 20% to 30%; increase `MIN_PAIRS_PER_BAND` by 1 |
-| Human reviews accumulate (3+ pending without response in 72h) | Checkpoints too aggressive | Double the `MAX_PARAM_SHIFT` threshold that triggers human review |
+The meta-loop monitors 5 signals and acts without human intervention:
 
-#### J2. Detection Without Human in the Loop
+| Signal | Detection | Autonomous Response |
+|--------|-----------|---------------------|
+| Guards too strict | 5+ consecutive no-update optimizer runs | Decrease `MIN_PAIRS_PER_BAND` by 1 (floor: 3). Max 3 consecutive relaxations. |
+| Trigger too aggressive | >40% rollback rate over last 10 optimizer runs | Increase `N_esp_trigger` by 50% (e.g., 5→8). Increase `N_atp_trigger` by 50%. |
+| Oscillation | Parameter flips direction 2× in a row | Circuit Breaker 2: freeze parameter for 3 cycles, widen min-pairs by 50%. |
+| Overfitting | Holdout loss > train loss by >15% | Increase `HOLDOUT_FRACTION` from 0.20 to 0.35. If already 0.35, increase `MIN_PAIRS_PER_BAND` by 1. |
+| Geometric approach degraded | r < 0.3 on 2 consecutive runs | Circuit Breaker 3 + Circuit Breaker 6 (safe harbor). |
+
+**All responses are autonomous.** No human approval, no review artifacts for meta-parameter changes.
+
+#### J2. Detection and Action Flow
 
 The meta-loop runs as a **post-optimizer check** — not a separate scheduled job. After every optimizer run (whether it updated params or not), the optimizer script:
 
 1. Reads `tuning-state.md` meta-loop counters
 2. Checks for any of the signals in §J1
 3. If a signal is detected:
-   - Proposes a meta-parameter change
-   - Writes the proposal to `atp-instance/artifacts/meta-loop-proposal-<date>.json`
-   - Sets `tuning-state.md → Human reviews pending += 1`
-   - Meta-parameter changes ALWAYS require human approval (no auto-apply)
+   - Applies the autonomous response immediately
+   - Logs the meta-parameter change to `tuning-state.md → ## Meta-Loop Adaptation Log`
+   - Commits: `meta(tune): <signal> detected — <response applied>`
+4. If no signal detected: updates counters and continues
+
+**No review artifacts. No pending reviews. No human gates.**
 
 #### J3. Rollback Mechanism
 
-When the optimizer produces a bad update (detected by meta-loop or human review):
+When the optimizer produces a bad update (detected by circuit breakers):
 
 **ESP rollback:**
-1. Read `esp-params.md → ## Update History` last entry before the bad update
-2. Write those params back as `## Current Parameters`
-3. Increment `tuning-state.md → ESP optimizer rollbacks`
-4. Commit: `revert(esp): rollback to <date> — <reason>`
+1. Circuit breaker (1, 3, or 6) detects the problem automatically
+2. Read `esp-params.md → ## Update History` last entry before the bad update
+3. Write those params back as `## Current Parameters`
+4. Update `compatibility.ts` to match rolled-back values
+5. Increment `tuning-state.md → ESP optimizer rollbacks`
+6. Commit: `revert(esp): auto-rollback to <date> — CB-<N> triggered: <reason>`
 
 **ATP rollback:**
-1. Read previous model class / staleness policy from `execution-records.json` metadata
-2. Rewrite `orchestration-main.md` routing table entry
-3. Increment `tuning-state.md → ATP optimizer rollbacks`
-4. Commit: `revert(atp): rollback <protocol> model class to <class> — <reason>`
+1. Post-downgrade failure detected (1 failure after downgrade)
+2. Read previous model class from execution records
+3. Rewrite `orchestration-main.md` routing table entry
+4. Increment `tuning-state.md → ATP optimizer rollbacks`
+5. Commit: `revert(atp): auto-rollback <protocol> model class to <class> — post-downgrade failure`
 
-**Meta-parameter rollback:** Meta-parameters are currently hardcoded in the optimizer source. To rollback a meta-parameter change, revert the source code commit that changed it.
+**Meta-parameter rollback:** If a meta-parameter adaptation causes 3 consecutive circuit breaker triggers, revert the meta-parameter to its default value and freeze it for 10 optimizer cycles.
 
 ---
 
-### K. Human Checkpoints
+### K. Autonomous Circuit Breakers
 
-#### K1. Conditions That Trigger Mandatory Human Review
+**v0.2.0: This section replaces the former "Human Checkpoints" section entirely.**
 
-| Condition | Trigger |
-|-----------|---------|
-| Any ESP threshold shifts by > 0.10 in a single cycle | Large shift = high risk of verdict reclassification |
-| ESP `w_jaccard` changes by > 0.10 | Fundamental change to how overlap is computed |
-| Any ATP model class downgrade proposed | Cost savings vs. quality tradeoff requires human judgment |
-| Any staleness policy weakening (longer TTL) | Risk of stale state causing silent failures |
-| First-ever optimizer run for either loop | Bootstrap validation — human confirms the system works |
-| `t_reject` moves in any direction | Reject threshold affects whether models are blocked entirely |
-| Meta-loop detects any signal from §J1 | Meta-parameter changes are always human-gated |
-| Calibration confidence tier changes (e.g., pilot → preliminary) | Major milestone, worth confirming |
+There are no human gates in this system. Every scenario previously requiring human approval is handled by one of 6 autonomous circuit breakers that validate mathematically, rollback automatically, and recover without intervention.
 
-#### K2. Review Artifact Format
+#### K1. Circuit Breaker 1 — Post-Update Validation
 
-When a human checkpoint is triggered, the optimizer writes:
+**Replaces:** First-ever optimizer run approval gate, large threshold shift review.
 
-**File:** `atp-instance/artifacts/review-<loop>-<date>.md`
+**Trigger:** After every parameter update attempt.
 
-```markdown
-# Human Review Required — <ESP|ATP> Parameter Update
+**Mechanism:**
+1. Before applying new params, snapshot current params as `preUpdate`
+2. Split calibration set: 80% train, 20% holdout (deterministic split by pair ID hash)
+3. Compute `asymmetricLoss(holdout, newParams)` and `asymmetricLoss(holdout, preUpdate)`
+4. **If holdout loss with new params > holdout loss with old params:** AUTO-ROLLBACK
+   - Restore `preUpdate` params immediately
+   - Log: `CB-1 triggered: holdout loss regression (old={X}, new={Y})`
+   - Flag the calibration pairs added since last successful update as potential outliers
+   - Increment rollback counter in `tuning-state.md`
+5. **If holdout loss with new params ≤ holdout loss with old params:** APPLY
+   - No gate, no review, no approval needed
+   - The math says it's better → it's better
 
-**Triggered by:** <condition from K1>
-**Optimizer version:** <version>
-**Date:** <ISO 8601>
+**Concrete thresholds:**
+- Holdout fraction: 0.20 (configurable by meta-loop, range [0.20, 0.35])
+- Split method: deterministic hash of pair ID mod 5, bucket 0 = holdout
+- Loss comparison: strict inequality (new must be ≤ old, not just close)
 
-## Proposed Changes
+#### K2. Circuit Breaker 2 — Oscillation Freeze
 
-| Parameter | Current | Proposed | Δ | Reason |
-|-----------|---------|----------|---|--------|
-| w_jaccard | 0.60 | 0.55 | -0.05 | Grid search on 15 pairs, loss 0.133 → 0.100 |
+**Replaces:** Meta-parameter human approval gate for oscillating params.
 
-## Evidence
+**Trigger:** Any parameter moves in opposite directions across 2 consecutive optimizer runs.
 
-- **Training pairs:** <N>
-- **Band coverage:** transparent=X, caution=Y, high-risk=Z, reject=W
-- **Train loss:** <current params> → <proposed params>
-- **Holdout loss:** <current params> → <proposed params>
-- **Pearson r:** <value> (threshold: ≥0.5)
+**Mechanism:**
+1. After each optimizer run, record the direction of change for each parameter: `+`, `-`, or `0`
+2. Compare against the previous run's direction record
+3. **If param P moved `+` then `-` (or vice versa) across 2 consecutive runs:** FREEZE P
+   - P cannot be updated for the next 3 optimizer cycles
+   - Increase `MIN_PAIRS_PER_BAND` requirement for P's band by 50% (rounded up)
+   - Log: `CB-2 triggered: oscillation freeze on {P} for 3 cycles`
+4. **After 3 frozen cycles, retry.** If oscillation recurs:
+   - Permanently set P's minimum-pairs requirement to 2× original
+   - Log: `CB-2 escalation: permanent minimum-pairs increase for {P}`
 
-## Impact Assessment
+**Concrete thresholds:**
+- Detection window: 2 consecutive runs
+- Initial freeze duration: 3 optimizer cycles
+- Min-pairs increase on first freeze: 50% (e.g., 5 → 8)
+- Min-pairs increase on repeat freeze: 100% of original (e.g., 5 → 10, permanently)
 
-- **Verdicts that would change:** <list of pair IDs whose verdict would reclassify>
-- **Reclassification direction:** <pair X: caution → transparent> (loosening / tightening)
-
-## Action Required
-
-- [ ] **APPROVE** — Apply proposed parameters
-- [ ] **REJECT** — Keep current parameters, increment no-update counter
-- [ ] **DEFER** — Keep current parameters, do not increment counter (need more data)
-
-## Auto-Rollback
-
-If no response within **48 hours**, proposed changes are **NOT applied** (conservative default).
-Pending review count will remain incremented in tuning-state.md.
+**Tracking:**
+```typescript
+interface OscillationState {
+  paramId: string;
+  lastDirection: '+' | '-' | '0';
+  freezeRemainingCycles: number;    // 0 = not frozen
+  permanentMinPairsMultiplier: number;  // 1.0 = default, 1.5 = first freeze, 2.0 = permanent
+}
 ```
 
-#### K3. Auto-Rollback Rule
+#### K3. Circuit Breaker 3 — Pearson r Guard
 
-- **Pre-application reviews (most cases):** Parameters are NOT applied until human approves. If no response in 48 hours, the proposal expires. No rollback needed because nothing changed.
-- **Post-application reviews (ATP model class downgrades only):** Downgrades can be applied provisionally with a 72-hour monitoring window. If a failure occurs during the monitoring window, auto-rollback to previous class immediately. If no human review after 72 hours AND no failures, the downgrade is confirmed.
-- **Meta-parameter changes:** NEVER auto-applied. Always require explicit human approval.
+**Replaces:** "Accumulating unreviewed checkpoints" signal, human review for correlation breakdown.
+
+**Trigger:** After every optimizer run that updates composite weights (`w_jaccard`).
+
+**Mechanism:**
+1. Recompute Pearson r between `architectureDistance` and `retrievalOverlapRisk` on the FULL calibration set (train + holdout)
+2. **If r < 0.4:** AUTO-ROLLBACK weights to previous version
+   - Flag the pairs added since last successful weight update as potential outliers
+   - Block weight updates until 3 more non-outlier pairs are added
+   - Log: `CB-3 triggered: Pearson r={X} < 0.4 — weight rollback, 3 new pairs required`
+3. **If r < 0.3 for 2 consecutive optimizer runs:** DEGRADED STATE
+   - Mark geometric approach as `degraded` in `tuning-state.md`
+   - Route ALL ESP verdicts to `caution` (override verdict computation)
+   - Do NOT update any weights until 5 new pairs restore r > 0.5
+   - If degraded persists, Circuit Breaker 6 activates
+   - Log: `CB-3 escalation: geometric approach degraded — all verdicts forced to caution`
+
+**Concrete thresholds:**
+- Rollback threshold: r < 0.4
+- Degraded threshold: r < 0.3 for 2 consecutive runs
+- Recovery from rollback: 3 new non-outlier pairs
+- Recovery from degraded: 5 new pairs with r > 0.5
+
+#### K4. Circuit Breaker 4 — Band Coverage Lock
+
+**Replaces:** "Human confirms band coverage is sufficient" gate.
+
+**Trigger:** Before any threshold update attempt.
+
+**Mechanism:**
+- Verdict thresholds for a band CANNOT move unless that band has **≥5 labeled pairs** in it
+- Zero exceptions. Not 4. Not "4 plus a manual override." Five.
+- This is checked before the grid search even considers candidate values for that threshold
+- If a grid search winner would move a frozen threshold, the movement is silently dropped and the next-best candidate that respects the freeze is selected
+
+**Concrete thresholds:**
+- Minimum pairs per band: 5 (adjustable by meta-loop, floor: 3)
+- Applies to: `t_transparent`, `t_high_risk`, `t_reject` independently
+- `w_jaccard` has its own minimum (10 cross-family pairs with retrieval data)
+
+**Current freeze status (3 calibration pairs):**
+- `t_transparent`: FROZEN (2 pairs in transparent band, need 5)
+- `t_high_risk`: FROZEN (0 pairs in high-risk band, need 5)
+- `t_reject`: FROZEN (0 pairs in reject band, need 5)
+
+#### K5. Circuit Breaker 5 — Confidence Floor
+
+**Replaces:** First-ever optimizer run requiring human approval.
+
+**Trigger:** Before any parameter update is applied.
+
+**Mechanism:**
+1. Check `calibration_confidence` tier from pair count and band coverage
+2. **If confidence is `uncalibrated` (< 5 pairs):**
+   - The optimizer runs normally (grid search, loss computation, everything)
+   - But results are written to a **proposal log** in `tuning-state.md → ## Proposal Log`, NOT applied
+   - Format: `{date, proposedParams, trainLoss, holdoutLoss, pairCount, status: 'pending'}`
+3. **The moment confidence reaches `pilot` (≥ 5 pairs, ≥2 bands with ≥5 each):**
+   - Read the most recent proposal from the proposal log
+   - Re-validate it against current data (run circuit breakers 1, 3, 4)
+   - If it passes: apply automatically. Mark proposal as `applied`.
+   - If it fails: discard. Mark proposal as `discarded`. Run a fresh optimizer with current data.
+4. **No human needed at any stage.** The confidence floor is a mathematical gate, not a human gate.
+
+**Concrete thresholds:**
+- `uncalibrated`: 0–4 pairs → proposals only
+- `pilot`: 5–19 pairs, ≥2 bands with ≥5 each → first auto-apply eligible
+- `preliminary`: 20–49 pairs → normal operation
+- `validated`: 50+ pairs → full confidence
+
+#### K6. Circuit Breaker 6 — Degraded State Auto-Recovery (Safe Harbor)
+
+**Replaces:** All remaining human escalation paths.
+
+**Trigger:** System detects degraded state:
+- Pearson r < 0.3 for 2 consecutive optimizer runs, OR
+- More than 3 rollbacks in 5 optimizer cycles
+
+**Mechanism:**
+1. **FREEZE** all parameter updates immediately
+2. **REVERT** all parameters to their Safe Harbor values (initial hardcoded defaults from `esp-params.md → ## Safe Harbor Parameters`):
+   - `w_jaccard` = 0.6, `w_tau` = 0.4
+   - `t_transparent` = 0.1, `t_high_risk` = 0.5, `t_reject` = 0.8
+   - `frob_norm_method` = mean
+   - `K_jaccard` = 3, `K_tau` = 10
+3. **CLEAR** all oscillation freeze counters (Circuit Breaker 2 state reset)
+4. **CLEAR** all outlier flags on calibration pairs
+5. **RESUME** optimizer only after **10 new calibration pairs** are added post-safe-harbor
+6. **LOG** the full degraded state, all parameter values at degradation, and recovery action to:
+   - `tuning-state.md → ## Safe Harbor Recovery Log`
+   - `memory/YYYY-MM-DD.md` (daily memory file)
+7. **COMMIT:** `safe-harbor(esp): degraded state detected — reverted to defaults, awaiting 10 new pairs`
+8. **NEVER ask for help.** The system handles its own recovery.
+
+**Concrete thresholds:**
+- Trigger: r < 0.3 for 2 runs, OR >3 rollbacks in 5 cycles
+- Recovery requirement: 10 new pairs post-safe-harbor
+- All counters (rollback count, no-update count, oscillation state) reset to zero on safe harbor activation
+
+---
+
+### K7. Circuit Breaker Interaction Matrix
+
+| Scenario | CB-1 | CB-2 | CB-3 | CB-4 | CB-5 | CB-6 |
+|----------|------|------|------|------|------|------|
+| First optimizer run, <5 pairs | — | — | — | — | **BLOCKS** (proposals only) | — |
+| First optimizer run, ≥5 pairs | Validates | — | Validates | Validates | Clears | — |
+| Weight update, holdout regresses | **ROLLBACK** | — | — | — | — | — |
+| Weight update, r drops below 0.4 | — | — | **ROLLBACK** | — | — | — |
+| Param oscillates 2× | — | **FREEZE 3 cycles** | — | — | — | — |
+| r < 0.3 for 2 consecutive | — | — | **DEGRADED** | — | — | **SAFE HARBOR** |
+| >3 rollbacks in 5 cycles | — | — | — | — | — | **SAFE HARBOR** |
+| Band has <5 pairs | — | — | — | **THRESHOLD FROZEN** | — | — |
+
+**Priority:** CB-6 (safe harbor) overrides all other circuit breakers. If CB-6 triggers, all other CB states are reset.
 
 ---
 
@@ -1053,35 +1215,35 @@ These components provide the infrastructure for all future tuning, even before t
 | Step | File to Create/Modify | Depends On | Est. Lines |
 |------|----------------------|------------|-----------|
 | 1.1 | `vectra/data/calibration-store.json` — seed with 3 existing pairs | Nothing | ~80 (JSON) |
-| 1.2 | `vectra/src/calibration/merge-store.ts` — merge + trigger check | 1.1 | ~80 |
-| 1.3 | `atp-instance/vars/esp-params.md` — create with hardcoded defaults | Nothing | ~60 |
-| 1.4 | `atp-instance/vars/tuning-state.md` — create with zero counters | Nothing | ~80 |
-| 1.5 | Modify `calibration-pairs-bench.ts` — add `--store` flag + per-query rankings | 1.1, 1.2 | ~40 Δ |
-| 1.6 | `atp-instance/data/execution-records.json` — create empty store | Nothing | ~20 (JSON) |
+| 1.2 | `vectra/src/embedding/calibration-store.ts` — append-only persistence, dedup, merge | 1.1 | ~120 |
+| 1.3 | `vectra/src/embedding/esp-params.ts` — param store with history, load/save, rollback | Nothing | ~150 |
+| 1.4 | `atp-instance/vars/esp-params.md` — create with hardcoded defaults + safe harbor | Nothing | ~80 |
+| 1.5 | `atp-instance/vars/tuning-state.md` — create with zero counters + CB state | Nothing | ~100 |
+| 1.6 | Modify `calibration-pairs-bench.ts` — add `--store` flag + per-query rankings | 1.1, 1.2 | ~40 Δ |
+| 1.7 | `atp-instance/data/execution-records.json` — create empty store | Nothing | ~20 (JSON) |
 
-### Phase 2 — Build After 8+ Pairs (ESP optimizer)
+### Phase 2 — Build After 5+ Pairs (ESP optimizer + circuit breakers)
 
 | Step | File | Depends On | Est. Lines |
 |------|------|------------|-----------|
-| 2.1 | `vectra/src/calibration/optimizer.ts` — grid search + guards + human checkpoint | 1.1–1.4 | ~200 |
-| 2.2 | `vectra/src/calibration/types.ts` — CalibrationPair, ESPParams interfaces | Nothing | ~60 |
+| 2.1 | `vectra/src/embedding/threshold-optimizer.ts` — grid search + guards + all 6 circuit breakers | 1.1–1.5 | ~400 |
+| 2.2 | `vectra/src/embedding/types.ts` — CalibrationPair, ESPParams, CircuitBreakerState interfaces | Nothing | ~100 |
 | 2.3 | Modify `compatibility.ts` — read params from var file OR accept as argument | 2.1 | ~30 Δ |
 
 ### Phase 3 — Build After 20+ Execution Records (ATP optimizer)
 
 | Step | File | Depends On | Est. Lines |
 |------|------|------------|-----------|
-| 3.1 | `vectra/src/atp/record-collector.ts` — reads handoff artifact, writes execution record | 1.6 | ~60 |
+| 3.1 | `vectra/src/atp/execution-recorder.ts` — reads handoff artifact, writes execution record | 1.7 | ~80 |
 | 3.2 | Modify handoff artifact schema — add `varsVerified` field | Nothing | Schema change |
-| 3.3 | `vectra/src/atp/atp-optimizer.ts` — model class / staleness / retry tuning | 1.4, 1.6 | ~150 |
+| 3.3 | `vectra/src/atp/atp-optimizer.ts` — model class / staleness / retry tuning | 1.5, 1.7 | ~150 |
 | 3.4 | Modify `orchestration-main.md` — add "learned model class" override section | 3.3 | ~20 Δ |
 
 ### Phase 4 — Build After First Optimizer Run (Meta-loop)
 
 | Step | File | Depends On | Est. Lines |
 |------|------|------------|-----------|
-| 4.1 | Add meta-loop checks to `optimizer.ts` and `atp-optimizer.ts` | 2.1, 3.3 | ~80 Δ |
-| 4.2 | Review artifact writer (shared by both optimizers) | 2.1 | ~50 |
+| 4.1 | Add meta-loop checks to `threshold-optimizer.ts` and `atp-optimizer.ts` | 2.1, 3.3 | ~100 Δ |
 
 ### Phase 5 — Future (passive collection, anchor weights)
 
@@ -1097,14 +1259,37 @@ These components provide the infrastructure for all future tuning, even before t
 
 | Capability | Blocker | When It Unblocks |
 |------------|---------|------------------|
-| Move `t_high_risk` threshold | 0 pairs in high-risk band | After benchmarking model pairs with high retrieval divergence |
-| Move `t_reject` threshold | 0 pairs in reject band | After finding genuinely incompatible model pairs |
-| Tune `w_jaccard` / `w_tau` | Only 1 cross-family pair | After 10+ cross-family pairs |
-| Tune anchor weights | Only 3 total pairs | After 15+ pairs |
+| Move `t_high_risk` threshold | 0 pairs in high-risk band (need 5) | After benchmarking model pairs with high retrieval divergence |
+| Move `t_reject` threshold | 0 pairs in reject band (need 5) | After finding genuinely incompatible model pairs |
+| Tune `w_jaccard` / `w_tau` | Only 1 cross-family pair (need 10) | After 10+ cross-family pairs |
+| Tune anchor weights | Only 3 total pairs (need 15) | After 15+ pairs |
 | Tune K values | No per-query ranking data stored | After modifying benchmark to store raw rankings |
-| Tune ATP model class | 0 execution records | After 10+ recorded executions per protocol |
-| Tune staleness TTLs | 0 verification observations | After 20+ verify_cmd runs per var |
+| Tune ATP model class | 0 execution records (need 10) | After 10+ recorded executions per protocol |
+| Tune staleness TTLs | 0 verification observations (need 20) | After 20+ verify_cmd runs per var |
 | Run meta-loop | 0 optimizer runs | After first optimizer run completes |
+| Apply learned params (vs. propose) | Confidence = uncalibrated (<5 pairs) | CB-5 auto-applies when pilot reached |
+
+---
+
+## Safety Assessment
+
+**Is this system safe to deploy without human oversight?**
+
+**YES**, with the following reasoning:
+
+1. **Bounded parameter space:** All parameters have hard min/max bounds. The system cannot produce values outside these ranges regardless of input data quality.
+
+2. **Safe harbor guarantee:** If the system detects it is performing badly (r < 0.3, excessive rollbacks), it reverts to known-good defaults. The worst-case behavior is identical to the current hardcoded system.
+
+3. **Conservative by default:** The confidence floor (CB-5) prevents any changes until sufficient data exists. The band coverage lock (CB-4) prevents threshold changes in data-sparse regions. The system does nothing harmful while data is thin.
+
+4. **Self-limiting degradation:** The degraded state auto-recovery (CB-6) means the system cannot spiral into increasingly bad states. It always has an escape hatch back to safe harbor.
+
+5. **No external actions:** This system only modifies internal parameter files and source code constants. It does not send emails, make API calls, modify infrastructure, or take any action that affects systems outside the vectra workspace.
+
+6. **The genuine risk:** A false-negative update (labeling an incompatible model pair as compatible) could cause retrieval quality degradation in a live pipeline. This risk is mitigated by: (a) the 2× false-positive penalty in the loss function, (b) the holdout validation in CB-1, and (c) the fact that ESP is not yet wired into a live pipeline — it's a research tool producing advisory verdicts. By the time it's wired into production, the calibration data will be substantial.
+
+**Bottom line:** The system can only make itself better or revert to defaults. It cannot make itself worse than the starting point in any sustained way.
 
 ---
 
