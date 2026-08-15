@@ -6,7 +6,12 @@ Quality gate: independent Sol review before promotion
 
 ## Decision
 
-Vectra is the enforcement boundary between OpenClaw and model providers. ATP remains the authored policy and operational-state layer. OpenClaw hooks remain observability inputs only; they are not trusted for admission or terminal enforcement because their failures and completion callbacks cannot reliably veto execution.
+Vectra is the enforcement boundary for both model admission and ATP-governed tool execution. ATP remains the authored policy and operational-state layer. OpenClaw hooks remain observability inputs only; they are not trusted for admission or terminal enforcement because their failures and completion callbacks cannot reliably veto execution.
+
+A provider proxy by itself is insufficient: OpenClaw must receive intermediate model tool-call responses before a mutation can occur, so holding every response for a post-mutation receipt deadlocks the agent loop. Production enforcement therefore has two coordinated planes:
+
+- the provider plane performs route selection, live-variable validation, immutable pinning, durable run creation, context injection, and final-response gating;
+- the tool plane is the sole path for ATP-governed tools and performs pre-tool authorization, downstream invocation, evidence capture, receipt creation, and replay-safe run advancement.
 
 ## Request path
 
@@ -19,9 +24,17 @@ OpenClaw provider client
   -> required-variable validation
   -> immutable bundle snapshot + pending ledger event
   -> upstream provider
-  -> buffered/stream-aware response inspection
-  -> receipt validation + terminal ledger event
+  -> buffered/stream-aware response classification
+  -> release intermediate tool call OR gate final response
   -> OpenClaw
+
+OpenClaw vectra_execute wrapper tool
+  -> authenticated Vectra tool gateway
+  -> signed run-token verification
+  -> ATP tool allowlist + canonical argument authorization
+  -> OpenClaw tool invoke worker
+  -> evidence + per-tool receipt + ledger advancement
+  -> wrapper tool result carrying signed continuation
 ```
 
 Read-only conversational requests may degrade only when their protocol explicitly permits it. Any request classified as state-changing, mutation-capable, ambiguous with mutation indicators, or governed by a state-changing ATP protocol fails closed when routing, validation, pinning, ledger persistence, or receipt enforcement is unavailable.
@@ -53,8 +66,12 @@ Vectra distinguishes provider completion from ATP execution completion. A model 
 - A pending ledger record is durable before the upstream request is sent.
 - Tool/mutation evidence is correlated to the run when available.
 - State-changing runs remain `pending` until a canonical receipt covers the pinned bundle and mutation evidence.
-- A provider response may be held, converted into a structured policy error, or released with an explicitly qualified pending status according to protocol policy. It may never be presented as unqualified success while receipt enforcement is unresolved.
+- Intermediate tool-call responses are released so OpenClaw can invoke the single Vectra wrapper tool. They are not terminal success.
+- The canary agent denies direct mutation tools. The wrapper delegates through Vectra, which authorizes and records the actual downstream tool invocation before returning its result.
+- Final natural-language responses are held until all authorized tool sequences have canonical receipts and the run is terminally eligible. They may never be presented as unqualified success while receipt enforcement is unresolved.
 - Restart reconciliation can produce `pending`, `failed`, or `violated`; it cannot fabricate `completed`.
+
+Each run uses a signed, expiring continuation token bound to the run, bundle hash, sequence, nonce, session scope, permitted tool, canonical argument hash, and previous ledger event. Reuse, reordering, argument substitution, or cross-run replay fails closed. Tool retries use an idempotency key and return the already-recorded outcome rather than repeating a mutation.
 
 ## Validator isolation
 
@@ -74,6 +91,7 @@ Bubblewrap is not a production dependency on this host because unprivileged user
 
 - Vectra binds only to loopback and authenticates OpenClaw requests with a rotated local credential.
 - Upstream credentials belong to Vectra for wrapped providers; the canary OpenClaw provider receives only the Vectra credential.
+- The canary OpenClaw agent exposes only the `vectra_execute` wrapper for mutation-capable work; direct native mutation tools are denied.
 - Direct egress to wrapped provider endpoints is denied for the canary service identity where host controls permit it.
 - Emergency bypass is signed/attributed, reasoned, expiring, ledgered, and never deletes violations.
 - Health means admission, validator, snapshot store, ledger, upstream, and reconciliation probes pass—not merely that the HTTP port accepts connections.
