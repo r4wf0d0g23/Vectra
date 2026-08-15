@@ -20,6 +20,7 @@
       "nativePolicyEnabled": { "type": "boolean", "default": true, "description": "Authorize native tools through Vectra before execution and receipt results afterward." },
       "wrapperEnabled": { "type": "boolean", "default": false, "description": "Register vectra_execute as a fallback bridge." },
       "timeoutMs": { "type": "integer", "minimum": 100, "maximum": 120000, "default": 30000 },
+      "heartbeatIntervalMs": { "type": "integer", "minimum": 100, "maximum": 10000, "default": 10000, "description": "Execution lease heartbeat interval for long-running native tools." },
       "maxRequestBytes": { "type": "integer", "minimum": 1024, "maximum": 1048576, "default": 262144 },
       "maxResponseBytes": { "type": "integer", "minimum": 1024, "maximum": 1048576, "default": 262144 }
     }

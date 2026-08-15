@@ -1,4 +1,4 @@
-import { createVectraExecuteTool, createVectraNativePolicy, createVectraResultMiddleware, resolveConfig } from './lib.js';
+import { createVectraExecuteTool, createVectraNativeEnforcement, resolveConfig } from './lib.js';
 
 export default {
   id: 'vectra-tool-wrapper',
@@ -6,8 +6,10 @@ export default {
   description: 'Routes authorized tool execution through Vectra ATP enforcement.',
   register(api) {
     const config = resolveConfig(api.pluginConfig ?? {});
-    api.registerTrustedToolPolicy(createVectraNativePolicy(config));
-    api.registerAgentToolResultMiddleware(createVectraResultMiddleware(config), { runtimes: ['openclaw', 'codex'] });
+    const native = createVectraNativeEnforcement(config);
+    api.registerTrustedToolPolicy(native.policy);
+    api.registerAgentToolResultMiddleware(native.middleware, { runtimes: ['openclaw', 'codex'] });
+    api.lifecycle?.registerRuntimeLifecycle?.({ id: 'vectra-native-leases', description: 'Stop Vectra native execution lease heartbeats.', cleanup: native.close });
     if (config.wrapperEnabled) api.registerTool(createVectraExecuteTool(config));
   },
 };

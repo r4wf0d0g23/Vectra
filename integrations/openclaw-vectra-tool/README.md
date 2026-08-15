@@ -8,6 +8,9 @@ trusted policy awaits `POST /v1/tool-policy/authorize` with the exact OpenClaw
 run ID, call ID, tool name, and arguments. The tool executes only when Vectra
 returns a valid authorization. Network errors, timeouts, malformed responses,
 missing runtime identity, and denials all fail closed before execution.
+Authorization atomically marks the call executing because OpenClaw exposes no
+later pre-execute seam. The plugin heartbeats the resulting lease throughout
+long-running native execution.
 
 After execution, manifest-gated `agentToolResultMiddleware` awaits
 `POST /v1/tool-policy/result` with the same identity, exact arguments, complete

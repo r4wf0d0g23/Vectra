@@ -86,7 +86,7 @@ test('approved native call executes once, exact result receipt completes, and re
     const body = JSON.parse(Buffer.concat(chunks).toString());
     requests.push({ url: req.url, auth: req.headers.authorization, body });
     res.setHeader('content-type', 'application/json');
-    if (req.url === '/v1/tool-policy/authorize') return res.end(JSON.stringify({ authorized: true, runId: 'run_123', sequence: 0, nonce: 'nonce' }));
+    if (req.url === '/v1/tool-policy/authorize') return res.end(JSON.stringify({ authorized: true, runId: 'run_123', sequence: 0, nonce: 'nonce', leaseExpiresAt: new Date(Date.now() + 30000).toISOString() }));
     const hash = sha({ result: body.result, isError: body.isError });
     priorResult ??= hash;
     if (hash !== priorResult) { res.statusCode = 409; return res.end(JSON.stringify({ error: 'result-retry-diverged' })); }
@@ -110,7 +110,7 @@ test('approved native call executes once, exact result receipt completes, and re
 
 test('result receipt identity mismatch fails closed after one native execution', async () => {
   const config = resolveConfig(baseConfig(), env);
-  const policy = createVectraNativePolicy(config, async () => new Response(JSON.stringify({ authorized: true, runId: 'run', sequence: 0, nonce: 'n' }), { status: 200 }));
+  const policy = createVectraNativePolicy(config, async () => new Response(JSON.stringify({ authorized: true, runId: 'run', sequence: 0, nonce: 'n', leaseExpiresAt: new Date(Date.now() + 30000).toISOString() }), { status: 200 }));
   const middleware = createVectraResultMiddleware(config, async () => new Response(JSON.stringify({ callId: 'wrong-call', tool: 'write', argsSha256: 'a', resultSha256: 'b', completedAt: new Date().toISOString() }), { status: 200 }));
   let executions = 0;
   await assert.rejects(runNative(policy, middleware, { toolCallId: 'expected-call', toolName: 'write', params: {} }, { agentId: 'vectra-canary', runId: 'oc-run-3' }, async () => { executions++; return { ok: true }; }), /identity mismatch/);

@@ -27,7 +27,7 @@ async function moduleByPrefix(prefix, marker) {
 
 const canonical = (value) => value === null || typeof value !== 'object' ? JSON.stringify(value) : Array.isArray(value) ? `[${value.map(canonical).join(',')}]` : `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`;
 const sha = (value) => createHash('sha256').update(canonical(value)).digest('hex');
-const state = { expected: null, authorizations: [], results: [], receipts: new Map() };
+const state = { expected: null, authorizations: [], heartbeats: [], results: [], receipts: new Map() };
 const secret = 'isolated-canary-secret-'.padEnd(48, 's');
 
 const gateway = createServer(async (req, res) => {
@@ -38,7 +38,12 @@ const gateway = createServer(async (req, res) => {
   if (req.url === '/v1/tool-policy/authorize') {
     state.authorizations.push(body);
     if (!state.expected || canonical(body) !== canonical(state.expected)) { res.statusCode = 409; return res.end(JSON.stringify({ authorized: false, error: 'not-authorized' })); }
-    return res.end(JSON.stringify({ authorized: true, runId: 'run_canary', sequence: 0, nonce: 'nonce-canary' }));
+    return res.end(JSON.stringify({ authorized: true, runId: 'run_canary', sequence: 0, nonce: 'nonce-canary', leaseExpiresAt: new Date(Date.now() + 30000).toISOString() }));
+  }
+  if (req.url === '/v1/tool-policy/heartbeat') {
+    state.heartbeats.push(body);
+    if (body.openClawRunId !== 'oc-canary-run' || body.toolCallId !== 'approved-call' || body.nonce !== 'nonce-canary') { res.statusCode = 409; return res.end(JSON.stringify({ error: 'heartbeat-binding-invalid' })); }
+    return res.end(JSON.stringify({ ok: true, runId: 'run_canary', toolCallId: body.toolCallId, leaseExpiresAt: new Date(Date.now() + 30000).toISOString() }));
   }
   if (req.url === '/v1/tool-policy/result') {
     state.results.push(body);
@@ -62,7 +67,7 @@ await mkdir(workspace);
 const configPath = join(temp, 'openclaw.json');
 const pluginConfig = {
   gatewayUrl, authTokenEnv: 'VECTRA_TOOL_GATEWAY_TOKEN', protectedAgentIds: ['vectra-canary'],
-  nativePolicyEnabled: true, wrapperEnabled: false, timeoutMs: 3000,
+  nativePolicyEnabled: true, wrapperEnabled: false, timeoutMs: 3000, heartbeatIntervalMs: 100,
 };
 const config = {
   plugins: {
@@ -115,11 +120,13 @@ const approved = await runBeforeToolCallHook({ toolName: 'exec', toolCallId: 'ap
 assert.equal(approved.blocked, false);
 sentinelExecutions++;
 const nativeResult = { content: [{ type: 'text', text: 'sentinel-ok' }], details: { counter: sentinelExecutions } };
+await new Promise((resolveDelay) => setTimeout(resolveDelay, 260));
 const runner = createMiddlewareRunner({ runtime: 'openclaw', agentId: ctx.agentId, runId: ctx.runId });
 const released = await runner.applyToolResultMiddleware({ toolCallId: 'approved-call', toolName: 'exec', args, result: nativeResult, isError: false });
 assert.deepEqual(released, nativeResult);
 assert.equal(sentinelExecutions, 1);
 assert.equal(state.receipts.size, 1);
+assert.ok(state.heartbeats.length >= 2);
 assert.deepEqual(state.results[0], { openClawRunId: ctx.runId, toolCallId: 'approved-call', tool: 'exec', args, result: nativeResult, isError: false });
 
 await new Promise((resolveClose) => gateway.close(resolveClose));
@@ -127,6 +134,6 @@ await rm(temp, { recursive: true, force: true });
 console.log(JSON.stringify({
   ok: true, profileRoot: temp, pluginStatus: 'loaded', trustedPolicies: 1,
   resultMiddlewares: 1, preBlocked: true, approvedExecutions: sentinelExecutions,
-  receipts: state.receipts.size, gatewayUrlPropagated: state.authorizations.length === 2,
+  receipts: state.receipts.size, heartbeats: state.heartbeats.length, gatewayUrlPropagated: state.authorizations.length === 2,
   authEnvPropagated: true, profileRemoved: true,
 }));

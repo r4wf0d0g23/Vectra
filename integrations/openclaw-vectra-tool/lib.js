@@ -30,12 +30,14 @@ export function resolveConfig(input = {}, env = process.env) {
     throw new Error('protectedAgentIds must be a non-empty array of valid agent IDs');
   }
   const timeoutMs = input.timeoutMs ?? 30_000;
+  const heartbeatIntervalMs = input.heartbeatIntervalMs ?? 10_000;
   const maxRequestBytes = input.maxRequestBytes ?? 256 * 1024;
   const maxResponseBytes = input.maxResponseBytes ?? 256 * 1024;
   if (!Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 120_000) throw new Error('timeoutMs is out of range');
+  if (!Number.isInteger(heartbeatIntervalMs) || heartbeatIntervalMs < 100 || heartbeatIntervalMs > 10_000) throw new Error('heartbeatIntervalMs is out of range');
   if (!Number.isInteger(maxRequestBytes) || maxRequestBytes < 1024 || maxRequestBytes > 1024 * 1024) throw new Error('maxRequestBytes is out of range');
   if (!Number.isInteger(maxResponseBytes) || maxResponseBytes < 1024 || maxResponseBytes > 1024 * 1024) throw new Error('maxResponseBytes is out of range');
-  return { gatewayUrl, authToken, allowedTools: new Set(allowedTools), protectedAgentIds: new Set(input.protectedAgentIds), nativePolicyEnabled, wrapperEnabled, timeoutMs, maxRequestBytes, maxResponseBytes };
+  return { gatewayUrl, authToken, allowedTools: new Set(allowedTools), protectedAgentIds: new Set(input.protectedAgentIds), nativePolicyEnabled, wrapperEnabled, timeoutMs, heartbeatIntervalMs, maxRequestBytes, maxResponseBytes };
 }
 
 async function gatewayPost(config, path, value, fetchImpl) {
@@ -75,7 +77,36 @@ function exactIdentity(event, ctx) {
   return { openClawRunId: ctx.runId, toolCallId: event.toolCallId, tool: event.toolName, args: event.params };
 }
 
-export function createVectraNativePolicy(config, fetchImpl = fetch) {
+class NativeExecutionLeases {
+  constructor(config, fetchImpl) { this.config = config; this.fetchImpl = fetchImpl; this.active = new Map(); }
+  key(identity) { return `${identity.openClawRunId}\u0000${identity.toolCallId}`; }
+  start(identity, authorization) {
+    const key = this.key(identity);
+    if (this.active.has(key)) throw new Error('execution lease already active');
+    const entry = { identity, nonce: authorization.nonce, timer: undefined, inFlight: undefined, error: undefined };
+    entry.timer = setInterval(() => {
+      if (entry.inFlight || entry.error) return;
+      entry.inFlight = gatewayPost(this.config, '/v1/tool-policy/heartbeat', {
+        openClawRunId: identity.openClawRunId, toolCallId: identity.toolCallId, nonce: entry.nonce,
+      }, this.fetchImpl).then((payload) => {
+        if (!payload || payload.ok !== true || payload.toolCallId !== identity.toolCallId || typeof payload.leaseExpiresAt !== 'string') throw new Error('heartbeat response is malformed');
+      }).catch((error) => { entry.error = error instanceof Error ? error : new Error(String(error)); clearInterval(entry.timer); }).finally(() => { entry.inFlight = undefined; });
+    }, this.config.heartbeatIntervalMs);
+    entry.timer.unref?.();
+    this.active.set(key, entry);
+  }
+  async finish(identity) {
+    const entry = this.active.get(this.key(identity));
+    if (!entry) return;
+    clearInterval(entry.timer);
+    await entry.inFlight;
+    this.active.delete(this.key(identity));
+    if (entry.error) throw new Error('Vectra execution heartbeat failed');
+  }
+  close() { for (const entry of this.active.values()) clearInterval(entry.timer); this.active.clear(); }
+}
+
+export function createVectraNativePolicy(config, fetchImpl = fetch, leases) {
   return {
     id: 'vectra-native-authorize',
     description: 'Await Vectra authorization before protected agents execute native tools.',
@@ -85,7 +116,8 @@ export function createVectraNativePolicy(config, fetchImpl = fetch) {
       if (!config.nativePolicyEnabled) return { allow: false, reason: 'Native tools are disabled; use vectra_execute' };
       try {
         const payload = await gatewayPost(config, '/v1/tool-policy/authorize', exactIdentity(event, ctx), fetchImpl);
-        if (!payload || payload.authorized !== true || typeof payload.runId !== 'string' || !Number.isInteger(payload.sequence) || typeof payload.nonce !== 'string') throw new Error('authorization response is malformed');
+        if (!payload || payload.authorized !== true || typeof payload.runId !== 'string' || !Number.isInteger(payload.sequence) || typeof payload.nonce !== 'string' || typeof payload.leaseExpiresAt !== 'string') throw new Error('authorization response is malformed');
+        leases?.start(exactIdentity(event, ctx), payload);
         return { allow: true };
       } catch {
         return { allow: false, reason: 'Vectra authorization unavailable or denied' };
@@ -94,10 +126,11 @@ export function createVectraNativePolicy(config, fetchImpl = fetch) {
   };
 }
 
-export function createVectraResultMiddleware(config, fetchImpl = fetch) {
+export function createVectraResultMiddleware(config, fetchImpl = fetch, leases) {
   return async (event, ctx) => {
     if (!config.nativePolicyEnabled || !protectedContext(config, ctx) || (event?.toolName === 'vectra_execute' && config.wrapperEnabled)) return;
     const identity = exactIdentity({ ...event, params: event.args }, ctx);
+    await leases?.finish(identity);
     const payload = await gatewayPost(config, '/v1/tool-policy/result', { ...identity, result: event.result, isError: Boolean(event.isError) }, fetchImpl);
     const expectedArgsHash = canonicalHash(event.args);
     const expectedResultHash = canonicalHash({ result: event.result, isError: Boolean(event.isError) });
@@ -105,6 +138,15 @@ export function createVectraResultMiddleware(config, fetchImpl = fetch) {
       throw new Error('Vectra result receipt identity mismatch');
     }
     return { result: event.result };
+  };
+}
+
+export function createVectraNativeEnforcement(config, fetchImpl = fetch) {
+  const leases = new NativeExecutionLeases(config, fetchImpl);
+  return {
+    policy: createVectraNativePolicy(config, fetchImpl, leases),
+    middleware: createVectraResultMiddleware(config, fetchImpl, leases),
+    close: () => leases.close(),
   };
 }
 
