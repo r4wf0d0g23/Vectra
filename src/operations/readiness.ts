@@ -81,3 +81,11 @@ export function upstreamProbe(baseUrl: string, token: string, fetchImpl: typeof 
     return `HTTP ${response.status}`;
   } };
 }
+
+export function terminalLifecycleProbe(authorityAvailable: boolean, preExecutionOnly: boolean): ReadinessProbe {
+  return { name: 'terminal-lifecycle-authority', async run() {
+    if (authorityAvailable) return 'agent-loop terminal authority active';
+    if (preExecutionOnly) return 'explicit pre-execution-only mode; terminal receipt enforcement unavailable';
+    throw new Error('provider boundary cannot authoritatively enforce terminal receipts; agent-loop adapter required');
+  } };
+}

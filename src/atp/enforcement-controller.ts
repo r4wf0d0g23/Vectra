@@ -35,7 +35,9 @@ export interface EnforcementControllerOptions {
   validatorSocketPath: string;
   pluginVersion: string;
   routes: RouteResolver;
-  receipts: ReceiptVerifier;
+  receipts?: ReceiptVerifier;
+  /** Provider-only safe mode; terminal enforcement requires agent-loop authority. */
+  preExecutionOnly?: boolean;
   validator?: FreshnessValidator;
   now?: () => Date;
 }
@@ -190,10 +192,11 @@ export class AtpEnforcementController implements ResponseReleaseController {
     const run: EnforcementRun = { runId, bundleId, protocolId: route.protocolId ?? 'unresolved', impact, pins: immutablePins, pinsSha256: sha(canonical(immutablePins)), snapshotPath, degraded: decision.degraded };
     await this.ledger.append({ sequence: 0, runId, bundleId, protocolId: run.protocolId, type: 'pending', occurredAt: this.now().toISOString(), pinsSha256: run.pinsSha256, reason: decision.reason });
     this.pending.set(request, { run });
-    return true;
+    return this.options.preExecutionOnly !== true;
   }
 
   async evaluate(exchange: ModelExchange): Promise<ReleaseDecision> {
+    if (this.options.preExecutionOnly) return { release: true };
     const context = this.pending.get(exchange.request);
     if (!context) return { release: false, status: 503, code: 'missing_enforcement_run', message: 'No durable ATP run exists for this response' };
     const { run } = context;
@@ -201,6 +204,7 @@ export class AtpEnforcementController implements ResponseReleaseController {
     try {
       await this.ledger.append({ ...base, sequence: 1, type: 'executing' });
       await this.ledger.append({ ...base, sequence: 2, type: 'verifying' });
+      if (!this.options.receipts) throw new Error('terminal-lifecycle-authority-unavailable');
       const receipt = await this.options.receipts.verify(run, exchange);
       if (!receipt.valid || !receipt.receiptSha256) {
         await this.ledger.append({ ...base, sequence: 3, type: 'violated', reason: receipt.reason ?? 'receipt-invalid' });

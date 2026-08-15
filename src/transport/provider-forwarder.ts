@@ -16,6 +16,7 @@ export interface ProviderForwarderOptions {
   maxHeldResponseBytes?: number;
   fetchImpl?: typeof fetch;
   dialectRegistry?: ProviderDialectRegistry;
+  upstreamAuthorization?: string;
 }
 
 export class ProviderForwarder {
@@ -53,6 +54,7 @@ export class ProviderForwarder {
     catch { return this.error(res, 400, 'invalid_json', 'Request body must be valid JSON'); }
 
     const headers = forwardedRequestHeaders(req.headers);
+    if (this.options.upstreamAuthorization) headers.set('authorization', this.options.upstreamAuthorization);
     // Node fetch auto-decompresses response bodies. Asking the provider for an
     // identity representation keeps proxy payload and header semantics aligned.
     headers.set('accept-encoding', 'identity');
