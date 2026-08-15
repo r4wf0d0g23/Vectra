@@ -89,3 +89,13 @@ export function terminalLifecycleProbe(authorityAvailable: boolean, preExecution
     throw new Error('provider boundary cannot authoritatively enforce terminal receipts; agent-loop adapter required');
   } };
 }
+
+export function toolGatewayProbe(reconcile: () => Promise<string[]>): ReadinessProbe {
+  let startupResult: string | null = null;
+  return { name: 'tool-gateway', async run() {
+    if (startupResult) return startupResult;
+    const violated = await reconcile();
+    startupResult = `durable store ready; ${violated.length} interrupted run(s) reconciled`;
+    return startupResult;
+  } };
+}
