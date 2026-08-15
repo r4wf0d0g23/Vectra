@@ -1,0 +1,18 @@
+{
+  "socketPath": "/run/vectra-validator/validator.sock",
+  "allowedExecutableRoots": ["/usr/bin"],
+  "allowedWorkingRoots": ["/opt/vectra/current"],
+  "defaultTimeoutMs": 10000,
+  "defaultMaxOutputBytes": 65536,
+  "maxConcurrent": 2,
+  "adapters": [
+    {
+      "id": "vectra-typecheck",
+      "executable": "/usr/bin/npm",
+      "args": ["run", "check", "--", "--pretty", "false"],
+      "cwd": "/opt/vectra/current",
+      "timeoutMs": 120000,
+      "maxOutputBytes": 131072
+    }
+  ]
+}

@@ -11,7 +11,7 @@
   "scripts": {
     "build": "tsc",
     "check": "tsc --noEmit",
-    "test": "npm run build && node --test dist/tests/*.test.js",
+    "test": "npm run build && node --test dist/tests/*.test.js test/*.test.mjs tests/*.test.mjs",
     "clean": "rm -rf dist",
     "start": "node dist/src/index.js",
     "start:dev": "VECTRA_INSTANCE=instances/reality-anchor.instance.json node dist/src/index.js"
@@ -40,6 +40,6 @@
     "dotenv": "^17.4.1",
     "node-cron": "^4.2.1",
     "openai": "^6.34.0",
-    "ws": "^8.20.0"
+    "ws": "^8.21.3"
   }
 }
