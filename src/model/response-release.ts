@@ -1,8 +1,8 @@
-import type { OpenAiApiKind, OpenAiRequest } from './openai-api.js';
+import type { ProviderApiKind, ProviderRequest } from './provider-dialect.js';
 
 export interface ModelExchange {
-  api: OpenAiApiKind;
-  request: OpenAiRequest;
+  api: ProviderApiKind;
+  request: ProviderRequest;
   taskDescription: string;
   upstreamStatus: number;
   upstreamHeaders: Headers;
@@ -19,7 +19,7 @@ export type ReleaseDecision =
  * them; thrown errors fail closed.
  */
 export interface ResponseReleaseController {
-  requiresHold(api: OpenAiApiKind, request: OpenAiRequest): boolean | Promise<boolean>;
+  requiresHold(api: ProviderApiKind, request: ProviderRequest): boolean | Promise<boolean>;
   evaluate(exchange: ModelExchange): ReleaseDecision | Promise<ReleaseDecision>;
 }
 

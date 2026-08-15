@@ -42,6 +42,91 @@ test('supports chat completions and Responses API while preserving status and he
   } finally { await close(proxy); await close(upstream); }
 });
 
+test('supports Anthropic Messages and preserves required provider headers', async () => {
+  let seen;
+  const upstream = createServer((req, res) => {
+    const chunks = []; req.on('data', (chunk) => chunks.push(chunk)); req.on('end', () => {
+      seen = { url: req.url, key: req.headers['x-api-key'], version: req.headers['anthropic-version'], beta: req.headers['anthropic-beta'], body: Buffer.concat(chunks).toString() };
+      res.writeHead(200, { 'content-type': 'application/json', 'request-id': 'req_123' });
+      res.end('{"type":"message","content":[{"type":"text","text":"ok"}]}');
+    });
+  });
+  const upstreamUrl = await listen(upstream);
+  const controller = { requiresHold: () => false, evaluate: () => ({ release: true }) };
+  const proxy = createServer((req, res) => new ProviderForwarder({ upstreamBaseUrl: upstreamUrl, releaseController: controller }).forward(req, res));
+  const proxyUrl = await listen(proxy);
+  try {
+    const body = '{"model":"claude-test","max_tokens":32,"messages":[{"role":"user","content":"hello"}]}';
+    const result = await call(proxyUrl, '/v1/messages?beta=true', body, {
+      'x-api-key': 'test-key', 'anthropic-version': '2023-06-01', 'anthropic-beta': 'tools-2025-01-01',
+    });
+    assert.equal(result.status, 200); assert.equal(result.headers['request-id'], 'req_123');
+    assert.equal(seen.url, '/v1/messages?beta=true'); assert.equal(seen.key, 'test-key');
+    assert.equal(seen.version, '2023-06-01'); assert.equal(seen.beta, 'tools-2025-01-01'); assert.equal(seen.body, body);
+  } finally { await close(proxy); await close(upstream); }
+});
+
+test('holds and releases Anthropic event-stream byte-identically with extracted user task', async () => {
+  const sse = 'event: message_start\ndata: {"type":"message_start"}\n\nevent: content_block_delta\ndata: {"delta":{"type":"text_delta","text":"hi"}}\n\nevent: message_stop\ndata: {"type":"message_stop"}\n\n';
+  const upstream = createServer((_req, res) => { res.writeHead(200, { 'content-type': 'text/event-stream', 'request-id': 'req_sse' }); res.end(sse); });
+  const upstreamUrl = await listen(upstream);
+  let exchange;
+  const controller = { requiresHold: (api) => api === 'anthropic-messages', evaluate: (value) => { exchange = value; return { release: true }; } };
+  const proxy = createServer((req, res) => new ProviderForwarder({ upstreamBaseUrl: upstreamUrl, releaseController: controller }).forward(req, res));
+  const proxyUrl = await listen(proxy);
+  try {
+    const body = JSON.stringify({ model: 'claude-test', stream: true, max_tokens: 32, messages: [
+      { role: 'user', content: 'old task' },
+      { role: 'assistant', content: 'ok' },
+      { role: 'user', content: [{ type: 'text', text: 'deploy safely' }, { type: 'image', source: {} }] },
+    ] });
+    const result = await call(proxyUrl, '/v1/messages', body, { 'x-api-key': 'test', 'anthropic-version': '2023-06-01' });
+    assert.equal(result.status, 200); assert.equal(result.body, sse); assert.equal(result.headers['request-id'], 'req_sse');
+    assert.equal(exchange.api, 'anthropic-messages'); assert.equal(exchange.taskDescription, 'deploy safely');
+    assert.equal(Buffer.from(exchange.responseBody).toString(), sse);
+  } finally { await close(proxy); await close(upstream); }
+});
+
+test('passes Anthropic upstream errors through unchanged', async () => {
+  const errorBody = '{"type":"error","error":{"type":"authentication_error","message":"bad key"}}';
+  const upstream = createServer((_req, res) => { res.writeHead(401, { 'content-type': 'application/json', 'request-id': 'req_error' }); res.end(errorBody); });
+  const upstreamUrl = await listen(upstream);
+  const controller = { requiresHold: () => false, evaluate: () => ({ release: true }) };
+  const proxy = createServer((req, res) => new ProviderForwarder({ upstreamBaseUrl: upstreamUrl, releaseController: controller }).forward(req, res));
+  const proxyUrl = await listen(proxy);
+  try {
+    const result = await call(proxyUrl, '/v1/messages', '{"messages":[]}');
+    assert.equal(result.status, 401); assert.equal(result.headers['request-id'], 'req_error'); assert.equal(result.body, errorBody);
+  } finally { await close(proxy); await close(upstream); }
+});
+
+test('aborts the Anthropic upstream fetch when the downstream disconnects', async () => {
+  let markAborted;
+  const aborted = new Promise((resolve) => { markAborted = resolve; });
+  const fetchImpl = (_url, options) => new Promise((_resolve, reject) => {
+    options.signal.addEventListener('abort', () => {
+      markAborted(options.signal.reason);
+      reject(options.signal.reason);
+    }, { once: true });
+  });
+  const controller = { requiresHold: () => false, evaluate: () => ({ release: true }) };
+  const proxy = createServer((req, res) => new ProviderForwarder({ upstreamBaseUrl: 'http://provider.invalid', releaseController: controller, fetchImpl }).forward(req, res));
+  const proxyUrl = await listen(proxy);
+  try {
+    await new Promise((resolve) => {
+      const req = request(proxyUrl + '/v1/messages', { method: 'POST', headers: { 'content-type': 'application/json' } });
+      req.on('error', () => resolve());
+      req.end('{"messages":[]}');
+      setTimeout(() => { req.destroy(); resolve(); }, 10);
+    });
+    const reason = await Promise.race([
+      aborted,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('upstream was not aborted')), 500)),
+    ]);
+    assert.match(String(reason), /downstream disconnected/);
+  } finally { await close(proxy); }
+});
+
 test('release-controller failure is fail-closed', async () => {
   const upstream = createServer((_req, res) => res.end('PRIVATE OUTPUT'));
   const upstreamUrl = await listen(upstream);
