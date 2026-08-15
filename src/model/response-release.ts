@@ -10,7 +10,7 @@ export interface ModelExchange {
 }
 
 export type ReleaseDecision =
-  | { release: true }
+  | { release: true; responseHeaders?: Record<string,string> }
   | { release: false; status?: number; code: string; message: string };
 
 /**
@@ -19,7 +19,7 @@ export type ReleaseDecision =
  * them; thrown errors fail closed.
  */
 export interface ResponseReleaseController {
-  requiresHold(api: ProviderApiKind, request: ProviderRequest): boolean | Promise<boolean>;
+  requiresHold(api: ProviderApiKind, request: ProviderRequest, context?: {headers:Readonly<Record<string,string|string[]|undefined>>}): boolean | Promise<boolean>;
   evaluate(exchange: ModelExchange): ReleaseDecision | Promise<ReleaseDecision>;
 }
 

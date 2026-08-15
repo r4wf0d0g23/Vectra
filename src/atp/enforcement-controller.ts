@@ -6,6 +6,8 @@ import type { OpenAiApiKind, OpenAiRequest } from '../model/openai-api.js';
 import { extractTaskDescription } from '../model/openai-api.js';
 import type { ModelExchange, ReleaseDecision, ResponseReleaseController } from '../model/response-release.js';
 import { validate as callValidator, validatorHealth } from '../validation/client.js';
+import type {AtpToolGateway} from './tool-gateway.js';
+import {classifyProviderResponse} from '../model/tool-call-classifier.js';
 
 export interface RouteBinding {
   kind: 'single' | 'composite' | 'ambiguous' | 'none';
@@ -40,6 +42,7 @@ export interface EnforcementControllerOptions {
   preExecutionOnly?: boolean;
   validator?: FreshnessValidator;
   now?: () => Date;
+  toolGateway?:AtpToolGateway;
 }
 
 export interface EnforcementRun {
@@ -53,7 +56,7 @@ export interface EnforcementRun {
   degraded: boolean;
 }
 
-interface PendingContext { run: EnforcementRun }
+interface PendingContext { run: EnforcementRun;token?:string }
 
 interface DurableEvent {
   sequence: number; runId: string; bundleId: string; protocolId: string;
@@ -158,6 +161,7 @@ export class AtpEnforcementController implements ResponseReleaseController {
   async reconcile(): Promise<string[]> { return this.ledger.reconcile(this.now().toISOString()); }
 
   async requiresHold(api: OpenAiApiKind, request: OpenAiRequest): Promise<boolean> {
+    if(this.options.toolGateway){const replay=await this.options.toolGateway.findReplay(request);if(replay){const r=replay.run;const run={runId:r.runId,bundleId:r.bundleId,protocolId:r.protocolId,pinsSha256:r.pinsSha256,impact:'state-changing',pins:{} as ImmutableExecutionPins,snapshotPath:'',degraded:false} as EnforcementRun;this.pending.set(request,{run,token:replay.token});return true}}
     const task = extractTaskDescription(api, request);
     const route = await this.options.routes.resolve(task);
     const impact = classifyOperation(route.toolImpacts);
@@ -191,7 +195,8 @@ export class AtpEnforcementController implements ResponseReleaseController {
     await immutableWrite(snapshotPath, `${canonical(snapshot)}\n`);
     const run: EnforcementRun = { runId, bundleId, protocolId: route.protocolId ?? 'unresolved', impact, pins: immutablePins, pinsSha256: sha(canonical(immutablePins)), snapshotPath, degraded: decision.degraded };
     await this.ledger.append({ sequence: 0, runId, bundleId, protocolId: run.protocolId, type: 'pending', occurredAt: this.now().toISOString(), pinsSha256: run.pinsSha256, reason: decision.reason });
-    this.pending.set(request, { run });
+    const token=this.options.toolGateway?await this.options.toolGateway.createRun(run):undefined;
+    this.pending.set(request, { run,token });
     return this.options.preExecutionOnly !== true;
   }
 
@@ -199,9 +204,10 @@ export class AtpEnforcementController implements ResponseReleaseController {
     if (this.options.preExecutionOnly) return { release: true };
     const context = this.pending.get(exchange.request);
     if (!context) return { release: false, status: 503, code: 'missing_enforcement_run', message: 'No durable ATP run exists for this response' };
-    const { run } = context;
+    const { run,token } = context;
     const base = { runId: run.runId, bundleId: run.bundleId, protocolId: run.protocolId, pinsSha256: run.pinsSha256, occurredAt: this.now().toISOString() };
     try {
+      if(this.options.toolGateway&&token){const phase=classifyProviderResponse(exchange);const events=await this.ledger.read(run.runId);if(events.length===1)await this.ledger.append({...base,sequence:1,type:'executing'});if(phase.kind==='unknown')return{release:false,status:502,code:'phase_unknown',message:'Provider phase unknown'};if(phase.kind==='intermediate'){await this.options.toolGateway.registerExpected(token,phase.calls);return{release:true,responseHeaders:{'x-vectra-run-token':token}}}const eligible=await this.options.toolGateway.finalEligibility(token);if(!eligible.eligible||!eligible.receiptSha256)return{release:false,status:409,code:'tool_receipts_incomplete',message:'Tool receipts incomplete'};const current=await this.ledger.read(run.runId);await this.ledger.append({...base,sequence:current.length,type:'verifying'});await this.ledger.append({...base,sequence:current.length+1,type:'completed',receiptSha256:eligible.receiptSha256});return{release:true,responseHeaders:{'x-vectra-run-token':token}}}
       await this.ledger.append({ ...base, sequence: 1, type: 'executing' });
       await this.ledger.append({ ...base, sequence: 2, type: 'verifying' });
       if (!this.options.receipts) throw new Error('terminal-lifecycle-authority-unavailable');

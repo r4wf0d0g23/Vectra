@@ -66,7 +66,7 @@ export class ProviderForwarder {
 
     try {
       let hold: boolean;
-      try { hold = await this.options.releaseController.requiresHold(api, body); }
+      try { hold = await this.options.releaseController.requiresHold(api, body, {headers:req.headers}); }
       catch { return this.error(res, 503, 'enforcement_unavailable', 'ATP enforcement decision unavailable'); }
 
       const target = new URL(req.url ?? '/', this.options.upstreamBaseUrl).toString();
@@ -102,6 +102,7 @@ export class ProviderForwarder {
       res.statusCode = upstream.status;
       res.statusMessage = upstream.statusText;
       writeUpstreamHeaders(res, upstream.headers, responseBody.byteLength);
+      for(const [key,value] of Object.entries(decision.responseHeaders??{}))res.setHeader(key,value);
       res.end(responseBody);
     } catch (error) {
       if (!res.headersSent && !res.writableEnded) {

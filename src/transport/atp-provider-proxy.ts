@@ -23,7 +23,7 @@ export async function createAtpProviderProxy(options: AtpProviderProxyOptions): 
   const controller = new AtpEnforcementController({
     ...options,
     routes: new AtpProductionRouteResolver(options.instancePath, options.validatorAdapters),
-    preExecutionOnly: true,
+    preExecutionOnly: options.toolGateway ? false : true,
   });
   await controller.reconcile();
   const forwarder = new ProviderForwarder({
