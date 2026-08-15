@@ -17,6 +17,8 @@ export interface ProviderForwarderOptions {
   fetchImpl?: typeof fetch;
   dialectRegistry?: ProviderDialectRegistry;
   upstreamAuthorization?: string;
+  /** Headers meaningful only inside the Vectra/OpenClaw trust boundary. */
+  localOnlyRequestHeaders?: readonly string[];
 }
 
 export class ProviderForwarder {
@@ -53,7 +55,7 @@ export class ProviderForwarder {
     try { body = JSON.parse(raw.toString('utf8')) as ProviderRequest; }
     catch { return this.error(res, 400, 'invalid_json', 'Request body must be valid JSON'); }
 
-    const headers = forwardedRequestHeaders(req.headers);
+    const headers = forwardedRequestHeaders(req.headers, this.options.localOnlyRequestHeaders);
     if (this.options.upstreamAuthorization) headers.set('authorization', this.options.upstreamAuthorization);
     // Node fetch auto-decompresses response bodies. Asking the provider for an
     // identity representation keeps proxy payload and header semantics aligned.

@@ -5,6 +5,10 @@ export const HOP_BY_HOP_HEADERS = new Set([
   'te', 'trailer', 'transfer-encoding', 'upgrade',
 ]);
 
+export const LOCAL_CREDENTIAL_HEADERS = new Set([
+  'authorization', 'proxy-authorization', 'cookie', 'x-vectra-token', 'x-vectra-run-token',
+]);
+
 export class BodyLimitError extends Error {
   constructor(readonly limit: number) {
     super(`HTTP body exceeds ${limit} bytes`);
@@ -26,15 +30,19 @@ export async function readBoundedRequest(req: IncomingMessage, limit: number): P
   return Buffer.concat(chunks, size);
 }
 
-export function forwardedRequestHeaders(headers: IncomingMessage['headers']): Headers {
+export function forwardedRequestHeaders(
+  headers: IncomingMessage['headers'],
+  localOnlyHeaders: readonly string[] = [],
+): Headers {
   const output = new Headers();
+  const blocked = new Set([...LOCAL_CREDENTIAL_HEADERS, ...localOnlyHeaders.map((name) => name.toLowerCase())]);
   const connectionTokens = new Set(
     (Array.isArray(headers.connection) ? headers.connection.join(',') : headers.connection ?? '')
       .split(',').map((value) => value.trim().toLowerCase()).filter(Boolean),
   );
   for (const [name, raw] of Object.entries(headers)) {
     const normalized = name.toLowerCase();
-    if (raw === undefined || HOP_BY_HOP_HEADERS.has(normalized) || connectionTokens.has(normalized) || normalized === 'host') continue;
+    if (raw === undefined || blocked.has(normalized) || HOP_BY_HOP_HEADERS.has(normalized) || connectionTokens.has(normalized) || normalized === 'host') continue;
     for (const value of Array.isArray(raw) ? raw : [raw]) output.append(name, value);
   }
   return output;

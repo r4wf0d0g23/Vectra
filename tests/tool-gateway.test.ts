@@ -17,5 +17,5 @@ test('classifier handles Chat, Responses, Anthropic and buffered SSE',()=>{
   assert.equal(classifyProviderResponse(exchange('chat-completions',{choices:[{message:{tool_calls:[{id:'c',function:{name:'x',arguments:'{}'}}]}}]})).kind,'intermediate');
   assert.equal(classifyProviderResponse(exchange('responses',{output:[{type:'function_call',call_id:'c',name:'x',arguments:'{}'}]})).kind,'intermediate');
   assert.equal(classifyProviderResponse(exchange('anthropic-messages',{content:[{type:'tool_use',id:'c',name:'x',input:{}}]})).kind,'intermediate');
-  assert.equal(classifyProviderResponse(exchange('responses','data: {"type":"response.output_item.done","item":{"type":"function_call","call_id":"c","name":"x","arguments":"{}"}}\n\n','text/event-stream')).kind,'intermediate');
+  assert.equal(classifyProviderResponse(exchange('responses','data: {"type":"response.output_item.done","item":{"type":"function_call","call_id":"c","name":"x","arguments":"{}"}}\n\ndata: {"type":"response.completed"}\n\n','text/event-stream')).kind,'intermediate');
 });

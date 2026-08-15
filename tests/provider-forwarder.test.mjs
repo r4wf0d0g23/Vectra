@@ -38,7 +38,32 @@ test('supports chat completions and Responses API while preserving status and he
       assert.deepEqual(result.headers['set-cookie'], ['a=1', 'b=2']);
     }
     assert.deepEqual(seen.map((x) => x.url), ['/v1/chat/completions', '/v1/responses']);
-    assert.ok(seen.every((x) => x.auth === 'Bearer test'));
+    assert.ok(seen.every((x) => x.auth === undefined));
+  } finally { await close(proxy); await close(upstream); }
+});
+
+test('strips local credentials and configured internal headers before setting provider auth', async () => {
+  let seen;
+  const upstream = createServer((req, res) => { seen = req.headers; res.end('{}'); });
+  const upstreamUrl = await listen(upstream);
+  const controller = { requiresHold: () => false, evaluate: () => ({ release: true }) };
+  const proxy = createServer((req, res) => new ProviderForwarder({
+    upstreamBaseUrl: upstreamUrl, releaseController: controller,
+    upstreamAuthorization: 'Bearer provider-only', localOnlyRequestHeaders: ['x-openclaw-session', 'X-Custom-Local'],
+  }).forward(req, res));
+  const proxyUrl = await listen(proxy);
+  try {
+    const result = await call(proxyUrl, '/v1/responses', '{"input":"hello"}', {
+      authorization: 'Bearer local-user', 'proxy-authorization': 'Basic local', cookie: 'session=private',
+      'x-vectra-token': 'internal', 'x-vectra-run-token': 'run-internal',
+      'x-openclaw-session': 'captain', 'x-custom-local': 'private', 'x-provider-safe': 'keep',
+    });
+    assert.equal(result.status, 200);
+    assert.equal(seen.authorization, 'Bearer provider-only');
+    for (const name of ['proxy-authorization', 'cookie', 'x-vectra-token', 'x-vectra-run-token', 'x-openclaw-session', 'x-custom-local']) {
+      assert.equal(seen[name], undefined, `${name} leaked upstream`);
+    }
+    assert.equal(seen['x-provider-safe'], 'keep');
   } finally { await close(proxy); await close(upstream); }
 });
 

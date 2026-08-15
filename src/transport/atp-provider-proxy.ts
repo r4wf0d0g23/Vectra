@@ -10,6 +10,7 @@ export interface AtpProviderProxyOptions extends Omit<EnforcementControllerOptio
   maxRequestBytes?: number;
   maxHeldResponseBytes?: number;
   fetchImpl?: typeof fetch;
+  localOnlyRequestHeaders?: readonly string[];
 }
 
 /**
@@ -33,6 +34,7 @@ export async function createAtpProviderProxy(options: AtpProviderProxyOptions): 
     maxHeldResponseBytes: options.maxHeldResponseBytes,
     fetchImpl: options.fetchImpl,
     upstreamAuthorization: options.upstreamAuthorization,
+    localOnlyRequestHeaders: options.localOnlyRequestHeaders,
   });
   return { controller, handle: (req, res) => forwarder.forward(req, res) };
 }
