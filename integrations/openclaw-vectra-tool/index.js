@@ -1,4 +1,4 @@
-import { createVectraExecuteTool, createVectraOnlyPolicy, resolveConfig } from './lib.js';
+import { createVectraExecuteTool, createVectraNativePolicy, createVectraResultMiddleware, resolveConfig } from './lib.js';
 
 export default {
   id: 'vectra-tool-wrapper',
@@ -6,7 +6,8 @@ export default {
   description: 'Routes authorized tool execution through Vectra ATP enforcement.',
   register(api) {
     const config = resolveConfig(api.pluginConfig ?? {});
-    api.registerTrustedToolPolicy(createVectraOnlyPolicy(config.protectedAgentIds));
-    api.registerTool(createVectraExecuteTool(config));
+    api.registerTrustedToolPolicy(createVectraNativePolicy(config));
+    api.registerAgentToolResultMiddleware(createVectraResultMiddleware(config), { runtimes: ['openclaw', 'codex'] });
+    if (config.wrapperEnabled) api.registerTool(createVectraExecuteTool(config));
   },
 };

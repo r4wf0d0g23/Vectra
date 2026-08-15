@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 const TOOL_NAME = /^[a-z][a-z0-9_.-]{0,63}$/;
 const ENV_NAME = /^[A-Z][A-Z0-9_]{0,63}$/;
 
@@ -19,9 +21,11 @@ export function resolveConfig(input = {}, env = process.env) {
   if (!ENV_NAME.test(authTokenEnv)) throw new Error('authTokenEnv is invalid');
   const authToken = env[authTokenEnv];
   if (typeof authToken !== 'string' || Buffer.byteLength(authToken) < 32) throw new Error(`${authTokenEnv} must contain at least 32 bytes`);
-  if (!Array.isArray(input.allowedTools) || input.allowedTools.length === 0 || input.allowedTools.some((name) => !TOOL_NAME.test(name))) {
-    throw new Error('allowedTools must be a non-empty array of valid tool names');
-  }
+  const nativePolicyEnabled = input.nativePolicyEnabled ?? true;
+  const wrapperEnabled = input.wrapperEnabled ?? false;
+  if (typeof nativePolicyEnabled !== 'boolean' || typeof wrapperEnabled !== 'boolean' || (!nativePolicyEnabled && !wrapperEnabled)) throw new Error('at least one enforcement mode must be enabled');
+  const allowedTools = input.allowedTools ?? [];
+  if (!Array.isArray(allowedTools) || allowedTools.some((name) => !TOOL_NAME.test(name)) || (wrapperEnabled && allowedTools.length === 0)) throw new Error('allowedTools must contain valid tool names when the wrapper is enabled');
   if (!Array.isArray(input.protectedAgentIds) || input.protectedAgentIds.length === 0 || input.protectedAgentIds.some((id) => typeof id !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/.test(id))) {
     throw new Error('protectedAgentIds must be a non-empty array of valid agent IDs');
   }
@@ -31,18 +35,76 @@ export function resolveConfig(input = {}, env = process.env) {
   if (!Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 120_000) throw new Error('timeoutMs is out of range');
   if (!Number.isInteger(maxRequestBytes) || maxRequestBytes < 1024 || maxRequestBytes > 1024 * 1024) throw new Error('maxRequestBytes is out of range');
   if (!Number.isInteger(maxResponseBytes) || maxResponseBytes < 1024 || maxResponseBytes > 1024 * 1024) throw new Error('maxResponseBytes is out of range');
-  return { gatewayUrl, authToken, allowedTools: new Set(input.allowedTools), protectedAgentIds: new Set(input.protectedAgentIds), timeoutMs, maxRequestBytes, maxResponseBytes };
+  return { gatewayUrl, authToken, allowedTools: new Set(allowedTools), protectedAgentIds: new Set(input.protectedAgentIds), nativePolicyEnabled, wrapperEnabled, timeoutMs, maxRequestBytes, maxResponseBytes };
 }
 
-export function createVectraOnlyPolicy(protectedAgentIds) {
+async function gatewayPost(config, path, value, fetchImpl) {
+  let body;
+  try { body = JSON.stringify(value); } catch { throw new Error('Vectra policy payload must be acyclic JSON'); }
+  if (Buffer.byteLength(body) > config.maxRequestBytes) throw new Error('Vectra policy request exceeded configured limit');
+  const response = await fetchImpl(new URL(path, config.gatewayUrl), {
+    method: 'POST', signal: AbortSignal.timeout(config.timeoutMs),
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${config.authToken}` }, body,
+  });
+  const payload = await boundedJson(response, config.maxResponseBytes);
+  if (!response.ok) throw new Error(`Vectra policy gateway denied request (HTTP ${response.status})`);
+  return payload;
+}
+
+function protectedContext(config, ctx) {
+  return typeof ctx?.agentId === 'string' && config.protectedAgentIds.has(ctx.agentId);
+}
+
+function canonical(value) {
+  if (value === null || typeof value !== 'object') {
+    const encoded = JSON.stringify(value);
+    if (encoded === undefined) throw new Error('policy payload contains non-JSON data');
+    return encoded;
+  }
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+  return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`;
+}
+
+function canonicalHash(value) { return createHash('sha256').update(canonical(value)).digest('hex'); }
+
+function exactIdentity(event, ctx) {
+  if (!ctx?.runId || typeof ctx.runId !== 'string') throw new Error('OpenClaw run id is required');
+  if (!event?.toolCallId || typeof event.toolCallId !== 'string') throw new Error('tool call id is required');
+  if (!event?.toolName || typeof event.toolName !== 'string' || !TOOL_NAME.test(event.toolName)) throw new Error('tool name is invalid');
+  if (!event?.params || typeof event.params !== 'object' || Array.isArray(event.params)) throw new Error('tool params must be an object');
+  return { openClawRunId: ctx.runId, toolCallId: event.toolCallId, tool: event.toolName, args: event.params };
+}
+
+export function createVectraNativePolicy(config, fetchImpl = fetch) {
   return {
-    id: 'vectra-only',
-    description: 'Fail closed so protected canary agents can execute only vectra_execute.',
-    evaluate(event, ctx) {
-      if (!ctx?.agentId || !protectedAgentIds.has(ctx.agentId)) return;
-      if (event?.toolName === 'vectra_execute') return { allow: true };
-      return { allow: false, reason: `Agent ${ctx.agentId} must route tool execution through vectra_execute` };
+    id: 'vectra-native-authorize',
+    description: 'Await Vectra authorization before protected agents execute native tools.',
+    async evaluate(event, ctx) {
+      if (!protectedContext(config, ctx)) return;
+      if (event?.toolName === 'vectra_execute' && config.wrapperEnabled) return { allow: true };
+      if (!config.nativePolicyEnabled) return { allow: false, reason: 'Native tools are disabled; use vectra_execute' };
+      try {
+        const payload = await gatewayPost(config, '/v1/tool-policy/authorize', exactIdentity(event, ctx), fetchImpl);
+        if (!payload || payload.authorized !== true || typeof payload.runId !== 'string' || !Number.isInteger(payload.sequence) || typeof payload.nonce !== 'string') throw new Error('authorization response is malformed');
+        return { allow: true };
+      } catch {
+        return { allow: false, reason: 'Vectra authorization unavailable or denied' };
+      }
     },
+  };
+}
+
+export function createVectraResultMiddleware(config, fetchImpl = fetch) {
+  return async (event, ctx) => {
+    if (!config.nativePolicyEnabled || !protectedContext(config, ctx) || (event?.toolName === 'vectra_execute' && config.wrapperEnabled)) return;
+    const identity = exactIdentity({ ...event, params: event.args }, ctx);
+    const payload = await gatewayPost(config, '/v1/tool-policy/result', { ...identity, result: event.result, isError: Boolean(event.isError) }, fetchImpl);
+    const expectedArgsHash = canonicalHash(event.args);
+    const expectedResultHash = canonicalHash({ result: event.result, isError: Boolean(event.isError) });
+    if (!payload || payload.callId !== event.toolCallId || payload.tool !== event.toolName || payload.argsSha256 !== expectedArgsHash || payload.resultSha256 !== expectedResultHash || typeof payload.completedAt !== 'string') {
+      throw new Error('Vectra result receipt identity mismatch');
+    }
+    return { result: event.result };
   };
 }
 

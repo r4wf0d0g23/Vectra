@@ -1,32 +1,36 @@
-# OpenClaw Vectra tool wrapper
+# OpenClaw Vectra tool-policy plugin
 
-This canary plugin registers exactly one tool: `vectra_execute`. It never calls
-OpenClaw's native mutation tools. It forwards an opaque signed run token, a
-configured tool name, and structured JSON arguments to the authenticated
-loopback Vectra tool gateway. Vectra verifies authorization, performs the
-operation through a fixed adapter, records lifecycle evidence, and returns the
-result plus receipt token.
+Production mode preserves OpenClaw's native tool schemas while making Vectra
+the authorization and receipt boundary.
 
-The plugin accepts only HTTP loopback gateway URLs, reads its gateway credential
-from an environment variable, bounds responses, and fails closed on denial,
-timeout, malformed output, or a missing receipt token. It does not decode the
-run token because signature, expiry, scope, replay, and bundle correlation are
-owned by Vectra.
+For each native tool call by a configured protected agent, the manifest-gated
+trusted policy awaits `POST /v1/tool-policy/authorize` with the exact OpenClaw
+run ID, call ID, tool name, and arguments. The tool executes only when Vectra
+returns a valid authorization. Network errors, timeouts, malformed responses,
+missing runtime identity, and denials all fail closed before execution.
 
-As defense in depth, the plugin also registers the manifest-gated trusted policy
-`vectra-only`. For configured canary agent IDs it blocks every tool except
-`vectra_execute`, including core tools. In OpenClaw 2026.7.1 this policy tier is
-awaited by the pre-tool runtime before ordinary `before_tool_call` hooks; a
-policy exception becomes a fail-closed policy failure, and `{allow:false}`
-becomes a veto. The installed runtime contract is documented in
-`docs/plugins/hooks.md` and implemented by `runTrustedToolPolicies` in the
-before-tool-call runtime. The manifest declaration is mandatory for installed
-plugins and registration is rejected unless the plugin is explicitly enabled.
+After execution, manifest-gated `agentToolResultMiddleware` awaits
+`POST /v1/tool-policy/result` with the same identity, exact arguments, complete
+OpenClaw result, and error flag. It requires a receipt matching the call ID and
+tool name before the result reaches the model. Identical middleware retries are
+idempotent in Vectra; divergent results violate the run.
 
-## Canary policy template
+OpenClaw 2026.7.1 awaits trusted policy evaluation before ordinary hooks and
+tool execution. It also awaits tool-result middleware before returning native
+results to the model. Installed plugins must be explicitly enabled and declare
+`contracts.trustedToolPolicies` plus every targeted runtime in
+`contracts.agentToolResultMiddleware`; this plugin targets `openclaw` and
+`codex`.
 
-The fragment below is documentation, not a command. Validate it against the
-installed OpenClaw schema before use. Do not hand-edit a live configuration.
+The legacy `vectra_execute` bridge remains available only when
+`wrapperEnabled:true`. It forwards an opaque signed run token and structured
+arguments to `/v1/tools/execute`. Production native-policy mode defaults to the
+wrapper being disabled.
+
+## Canary configuration template
+
+This fragment is documentation, not a command. Validate it against the
+installed schema and apply it through the OpenClaw config-change protocol.
 
 ```json
 {
@@ -37,8 +41,10 @@ installed OpenClaw schema before use. Do not hand-edit a live configuration.
         "config": {
           "gatewayUrl": "http://127.0.0.1:18801",
           "authTokenEnv": "VECTRA_TOOL_GATEWAY_TOKEN",
-          "allowedTools": ["config.patch"],
-          "protectedAgentIds": ["vectra-canary"]
+          "protectedAgentIds": ["vectra-canary"],
+          "nativePolicyEnabled": true,
+          "wrapperEnabled": false,
+          "timeoutMs": 30000
         }
       }
     }
@@ -48,11 +54,7 @@ installed OpenClaw schema before use. Do not hand-edit a live configuration.
       {
         "id": "vectra-canary",
         "tools": {
-          "allow": ["vectra_execute"],
-          "deny": [
-            "exec", "process", "write", "edit", "apply_patch", "gateway",
-            "browser", "nodes", "cron", "message", "sessions_send"
-          ]
+          "allow": ["read", "exec", "write", "edit", "apply_patch"]
         }
       }
     ]
@@ -60,16 +62,21 @@ installed OpenClaw schema before use. Do not hand-edit a live configuration.
 }
 ```
 
-The canary agent must use an explicit `allow` list containing only
-`vectra_execute`; the deny list is defense in depth and must include every native
-mutation surface enabled by the installed build. Before promotion, inspect the
-effective tool catalog from the actual canary session and prove that attempts to
-call `exec`, filesystem mutation, gateway/config mutation, browser automation,
-node operations, scheduling, messaging, and session sends are denied.
+The OpenClaw allowlist remains intentionally narrow, but authorization does not
+come from that list: every listed native tool is still denied unless Vectra has
+an exact expected call. Verify from the real canary runtime that an unexpected
+`exec` is vetoed before process creation, an expected mutation executes once,
+the result receipt completes, identical result retries remain idempotent, and
+argument/call/result mismatches fail closed.
 
-OpenClaw holds only the loopback gateway credential. Any downstream credentials
-and tool authority remain in Vectra. Enforce service-identity egress rules so the
-canary cannot bypass Vectra and reach mutation targets directly.
+For a wrapper-only emergency compatibility canary, set
+`nativePolicyEnabled:false`, `wrapperEnabled:true`, provide `allowedTools`, and
+allow only `vectra_execute` at the agent layer. Do not run both modes unless a
+specific migration test requires it.
+
+The plugin accepts only HTTP loopback gateway URLs, reads its credential from an
+environment variable, and bounds request and response bodies. OpenClaw holds
+only this loopback credential. Downstream tool credentials remain in Vectra.
 
 ## Development verification
 
