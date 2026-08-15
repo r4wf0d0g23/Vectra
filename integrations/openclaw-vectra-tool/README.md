@@ -39,7 +39,7 @@ installed schema and apply it through the OpenClaw config-change protocol.
       "vectra-tool-wrapper": {
         "enabled": true,
         "config": {
-          "gatewayUrl": "http://127.0.0.1:18801",
+          "gatewayUrl": "http://127.0.0.1:18800",
           "authTokenEnv": "VECTRA_TOOL_GATEWAY_TOKEN",
           "protectedAgentIds": ["vectra-canary"],
           "nativePolicyEnabled": true,

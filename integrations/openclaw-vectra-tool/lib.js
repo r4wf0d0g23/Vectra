@@ -16,7 +16,7 @@ function loopbackUrl(value) {
 }
 
 export function resolveConfig(input = {}, env = process.env) {
-  const gatewayUrl = loopbackUrl(input.gatewayUrl ?? 'http://127.0.0.1:18801');
+  const gatewayUrl = loopbackUrl(input.gatewayUrl ?? 'http://127.0.0.1:18800');
   const authTokenEnv = input.authTokenEnv ?? 'VECTRA_TOOL_GATEWAY_TOKEN';
   if (!ENV_NAME.test(authTokenEnv)) throw new Error('authTokenEnv is invalid');
   const authToken = env[authTokenEnv];

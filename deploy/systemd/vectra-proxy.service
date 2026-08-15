@@ -11,6 +11,7 @@ Group=rawdata
 UMask=0007
 WorkingDirectory=/opt/vectra/current
 EnvironmentFile=/etc/vectra/proxy.env
+ExecStartPre=/usr/bin/node /opt/vectra/current/deploy/validate-production-env.mjs
 ExecStart=/usr/bin/node /opt/vectra/current/dist/src/operations/production-main.js
 ExecStop=/bin/kill -TERM $MAINPID
 TimeoutStopSec=20s
