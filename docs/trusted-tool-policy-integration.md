@@ -26,3 +26,19 @@ does not inject the nonce into tool params; it retains the nonce in its lease
 coordinator and sends it only to `/v1/tool-policy/heartbeat`. A future native
 post-policy/pre-execute metadata seam should replace this limitation when the
 host provides one.
+
+## Awaited endpoint sequence
+
+1. `POST /v1/tool-policy/authorize` atomically moves the exact call from
+   `expected` to `executing` before OpenClaw may invoke it. The response carries
+   the nonce, stable idempotency key, and lease expiry.
+2. The plugin renews the execution lease through `heartbeat` (or the compatible
+   `renew` route) while the native call runs.
+3. `POST /v1/tool-policy/result` records the exact arguments, result, and error
+   state. Failure violates the whole run and blocks sibling calls.
+4. `POST /v1/tool-policy/outcome` records a signed `no-op` or `aborted` outcome
+   when a state-changing run legitimately performs no mutation.
+
+An expired `executing` call is permanently indeterminate and never becomes
+retryable. The idempotency key is exposed as policy metadata only; it is not
+injected into arbitrary native tool parameters.

@@ -174,7 +174,14 @@ function classifyJson(exchange: ModelExchange): Phase {
       }
     }
   } catch { return { kind: 'unknown' }; }
-  if (!calls.length) return { kind: 'terminal' };
+  if (!calls.length) {
+    const terminal = exchange.api === 'chat-completions'
+      ? Array.isArray(value.choices) && value.choices.length > 0 && value.choices.every((choice: any) => typeof choice.finish_reason === 'string')
+      : exchange.api === 'responses'
+        ? value.status === 'completed' || value.type === 'response.completed'
+        : value.type === 'message' && typeof value.stop_reason === 'string';
+    return terminal ? { kind: 'terminal' } : { kind: 'unknown' };
+  }
   if (calls.some((call) => !call.callId || !call.tool)) return { kind: 'unknown' };
   return { kind: 'intermediate', calls: [...new Map(calls.map((call) => [call.callId, call])).values()] };
 }
