@@ -72,12 +72,21 @@ export interface VectraConfig {
   /** Port Vectra's proxy listens on. OpenClaw's baseURL points here. */
   proxyPort: number;
 
+  /** Shared local credential OpenClaw presents to the loopback proxy. */
+  proxyAuthToken?: string;
+
+  /** Maximum graceful drain time before lingering sockets are closed. */
+  proxyShutdownGraceMs?: number;
+
   /**
    * Upstream model API base URL (the real LLM provider endpoint).
    * Required — no default. Set via instance config or VECTRA_UPSTREAM_URL.
    * Example: 'https://api.anthropic.com', 'https://api.openai.com'
    */
   upstreamBaseUrl: string;
+
+  /** Upstream provider credential retained by Vectra, never OpenClaw. */
+  upstreamAuthToken?: string;
 
   /**
    * OpenClaw gateway URL (for tool invocations via /tools/invoke).
@@ -120,9 +129,12 @@ export const DEFAULT_CONFIG: VectraConfig = {
   opsChannel: process.env['VECTRA_OPS_CHANNEL'] ?? '',
 
   proxyPort: 18800,
+  proxyAuthToken: process.env['VECTRA_PROXY_TOKEN'] ?? '',
+  proxyShutdownGraceMs: 15_000,
 
   // Upstream LLM provider: no default — set per instance
   upstreamBaseUrl: process.env['VECTRA_UPSTREAM_URL'] ?? '',
+  upstreamAuthToken: process.env['VECTRA_UPSTREAM_TOKEN'] ?? '',
 
   // OpenClaw gateway: localhost is a reasonable default during build phase
   openclawGatewayUrl: process.env['VECTRA_OPENCLAW_URL'] ?? 'http://localhost:18789',

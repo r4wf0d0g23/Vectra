@@ -1,0 +1,50 @@
+[Unit]
+Description=Vectra ATP enforcement proxy
+After=network-online.target vectra-validator.service
+Requires=vectra-validator.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rawdata
+Group=rawdata
+UMask=0007
+WorkingDirectory=/opt/vectra/current
+EnvironmentFile=/etc/vectra/proxy.env
+ExecStart=/usr/bin/node /opt/vectra/current/dist/src/operations/production-main.js
+ExecStop=/bin/kill -TERM $MAINPID
+TimeoutStopSec=20s
+KillSignal=SIGTERM
+Restart=on-failure
+RestartSec=3s
+RuntimeDirectory=vectra
+RuntimeDirectoryMode=0750
+StateDirectory=vectra
+StateDirectoryMode=0750
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=
+AmbientCapabilities=
+ReadWritePaths=/var/lib/vectra /run/vectra
+
+[Install]
+WantedBy=multi-user.target

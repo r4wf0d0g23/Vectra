@@ -23,6 +23,8 @@ import type { ReceiptGate } from '../gates/receipt.js';
 import type { TelemetryEmitter } from '../telemetry/emitter.js';
 import type { AtpDispatchMatcher } from '../atp/matcher.js';
 import type { JobEnvelope, JobSource } from '../core/job.js';
+import { isLocallyAuthenticated, requireStrongLocalToken } from '../operations/local-auth.js';
+import type { ReadinessService } from '../operations/readiness.js';
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -34,6 +36,7 @@ export interface ProxyDependencies {
   matcher: AtpDispatchMatcher;
   receiptGate: ReceiptGate;
   telemetry: TelemetryEmitter;
+  readiness?: ReadinessService;
 }
 
 interface ChatCompletionRequest {
@@ -68,6 +71,8 @@ export class VectraProxy {
    */
   async start(): Promise<void> {
     const { config } = this.deps;
+    requireStrongLocalToken(config.proxyAuthToken ?? '');
+    if (this.deps.readiness) await this.deps.readiness.reconcileStartup();
 
     this.server = createServer(async (req, res) => {
       try {
@@ -93,7 +98,13 @@ export class VectraProxy {
   async stop(): Promise<void> {
     return new Promise((resolve) => {
       if (this.server) {
-        this.server.close(() => resolve());
+        const server = this.server;
+        const timer = setTimeout(() => {
+          server.closeAllConnections();
+          resolve();
+        }, this.deps.config.proxyShutdownGraceMs ?? 15_000);
+        server.close(() => { clearTimeout(timer); resolve(); });
+        timer.unref();
       } else {
         resolve();
       }
@@ -110,6 +121,24 @@ export class VectraProxy {
     if (url === '/health' && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ status: 'ok', component: 'vectra-proxy' }));
+      return;
+    }
+
+    if (!isLocallyAuthenticated(req, this.deps.config.proxyAuthToken ?? '')) {
+      res.writeHead(401, { 'Content-Type': 'application/json', 'WWW-Authenticate': 'VectraLocal' });
+      res.end(JSON.stringify({ error: { message: 'Local proxy authentication required', type: 'authentication_error' } }));
+      return;
+    }
+
+    if (url === '/ready' && req.method === 'GET') {
+      if (!this.deps.readiness) {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ready: false, error: 'readiness_not_configured' }));
+        return;
+      }
+      const report = await this.deps.readiness.check();
+      res.writeHead(report.ready ? 200 : 503, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(report));
       return;
     }
 
@@ -210,16 +239,14 @@ export class VectraProxy {
     const upstreamUrl = `${config.upstreamBaseUrl}/v1/chat/completions`;
     const upstreamHeaders: Record<string, string> = {};
 
-    // Copy auth headers through to upstream
+    // Vectra owns the upstream credential. Never forward OpenClaw credentials.
+    if (config.upstreamAuthToken) upstreamHeaders['authorization'] = `Bearer ${config.upstreamAuthToken}`;
     for (const [key, value] of Object.entries(req.headers)) {
-      if (key.toLowerCase() === 'authorization' && typeof value === 'string') {
-        upstreamHeaders['authorization'] = value;
-      }
       if (key.toLowerCase() === 'content-type' && typeof value === 'string') {
         upstreamHeaders['content-type'] = value;
       }
       // Pass through anthropic-specific headers
-      if (key.toLowerCase().startsWith('x-') && typeof value === 'string') {
+      if (key.toLowerCase().startsWith('x-') && key.toLowerCase() !== 'x-vectra-token' && typeof value === 'string') {
         upstreamHeaders[key.toLowerCase()] = value;
       }
     }
@@ -295,10 +322,11 @@ export class VectraProxy {
 
     const headers: Record<string, string> = {};
     for (const [key, value] of Object.entries(req.headers)) {
-      if (typeof value === 'string') {
+      if (typeof value === 'string' && !['authorization', 'x-vectra-token', 'host', 'content-length'].includes(key.toLowerCase())) {
         headers[key] = value;
       }
     }
+    if (config.upstreamAuthToken) headers['authorization'] = `Bearer ${config.upstreamAuthToken}`;
 
     try {
       const upstream = await fetch(url, {
