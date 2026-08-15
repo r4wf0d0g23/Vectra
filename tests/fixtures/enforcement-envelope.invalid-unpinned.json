@@ -1,0 +1,12 @@
+{
+  "contract_version": "1.0.0",
+  "run_id": "run-fixture-invalid",
+  "bundle_id": "bundle-fixture-invalid",
+  "impact": "state-changing",
+  "pins": {
+    "variables": [],
+    "bundleSha256": "not-a-hash",
+    "pluginVersion": "1.0.0",
+    "contractVersion": "1.0.0"
+  }
+}
