@@ -1,0 +1,19 @@
+{
+  "name": "@vectra/openclaw-tool-wrapper",
+  "version": "0.1.0",
+  "description": "Narrow OpenClaw tool wrapper for Vectra-governed mutation execution",
+  "type": "module",
+  "private": true,
+  "peerDependencies": {
+    "openclaw": ">=2026.7.1"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": { "optional": true }
+  },
+  "openclaw": {
+    "extensions": ["./index.js"]
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  }
+}

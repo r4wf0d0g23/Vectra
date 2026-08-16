@@ -1,0 +1,21 @@
+{
+  "instanceId": "vectra-atp-canary",
+  "mode": "observe",
+  "listen": { "host": "127.0.0.1", "port": 18800 },
+  "provider": {
+    "baseUrl": "http://127.0.0.1:18800",
+    "authHeader": "x-vectra-token",
+    "credentialSource": "systemd-credential:VECTRA_PROXY_TOKEN"
+  },
+  "rollout": {
+    "agentScope": ["isolated-canary-only"],
+    "stages": ["observe", "warn", "enforce"],
+    "minimumConsecutiveHealthyDays": 7,
+    "captainTrafficAllowed": false
+  },
+  "failClosed": {
+    "stateChanging": true,
+    "ambiguousMutation": true,
+    "readOnlyDegradationRequiresProtocolOptIn": true
+  }
+}

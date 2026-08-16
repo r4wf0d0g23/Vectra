@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vectra.invalid/schema/openclaw-vectra-execute-input.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["run_token", "requested_tool", "args"],
+  "properties": {
+    "run_token": { "type": "string", "minLength": 32, "maxLength": 8192, "pattern": "^\\S+$", "description": "Opaque signed run token issued by Vectra." },
+    "requested_tool": { "type": "string", "pattern": "^[a-z][a-z0-9_.-]{0,63}$" },
+    "args": { "$ref": "#/$defs/jsonObject" }
+  },
+  "$defs": {
+    "jsonValue": {
+      "anyOf": [
+        { "type": "null" }, { "type": "boolean" }, { "type": "number" }, { "type": "string", "maxLength": 65536 },
+        { "type": "array", "maxItems": 1024, "items": { "$ref": "#/$defs/jsonValue" } },
+        { "$ref": "#/$defs/jsonObject" }
+      ]
+    },
+    "jsonObject": { "type": "object", "maxProperties": 256, "additionalProperties": { "$ref": "#/$defs/jsonValue" } }
+  }
+}

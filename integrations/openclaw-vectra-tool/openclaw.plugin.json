@@ -1,0 +1,28 @@
+{
+  "id": "vectra-tool-wrapper",
+  "name": "Vectra Tool Wrapper",
+  "description": "Routes authorized tool execution through Vectra's ATP enforcement gateway.",
+  "activation": { "onStartup": false, "onConfigPaths": ["plugins.entries.vectra-tool-wrapper"] },
+  "contracts": {
+    "tools": ["vectra_execute"],
+    "trustedToolPolicies": ["vectra-native-authorize"],
+    "agentToolResultMiddleware": ["openclaw", "codex"]
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["protectedAgentIds"],
+    "properties": {
+      "gatewayUrl": { "type": "string", "default": "http://127.0.0.1:18800", "description": "Loopback Vectra tool gateway URL." },
+      "authTokenEnv": { "type": "string", "default": "VECTRA_TOOL_GATEWAY_TOKEN", "pattern": "^[A-Z][A-Z0-9_]{0,63}$" },
+      "allowedTools": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-z][a-z0-9_.-]{0,63}$" } },
+      "protectedAgentIds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$" }, "description": "Agent IDs whose native tools require Vectra authorization and receipts." },
+      "nativePolicyEnabled": { "type": "boolean", "default": true, "description": "Authorize native tools through Vectra before execution and receipt results afterward." },
+      "wrapperEnabled": { "type": "boolean", "default": false, "description": "Register vectra_execute as a fallback bridge." },
+      "timeoutMs": { "type": "integer", "minimum": 100, "maximum": 120000, "default": 30000 },
+      "heartbeatIntervalMs": { "type": "integer", "minimum": 100, "maximum": 10000, "default": 10000, "description": "Execution lease heartbeat interval for long-running native tools." },
+      "maxRequestBytes": { "type": "integer", "minimum": 1024, "maximum": 1048576, "default": 262144 },
+      "maxResponseBytes": { "type": "integer", "minimum": 1024, "maximum": 1048576, "default": 262144 }
+    }
+  }
+}
