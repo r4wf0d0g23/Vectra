@@ -1,0 +1,24 @@
+[Unit]
+Description=Vectra representative loopback-only canary workload
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=vectra-canary
+Group=vectra-canary
+UMask=0077
+Environment=VECTRA_CANARY_ENV=/etc/vectra-canary/canary.env
+Environment=VECTRA_CANARY_WORKLOAD_LOG=/var/lib/vectra-canary/workloads.jsonl
+Environment=VECTRA_CANARY_SOCKET=/run/vectra-canary-proxy.sock
+ExecStartPre=/usr/bin/test -f /var/lib/vectra-canary/workloads.jsonl
+ExecStart=/usr/bin/node /usr/local/lib/vectra-canary/canary-workload.mjs
+ExecStartPost=+/usr/bin/node /usr/local/lib/vectra-canary/attest-canary-workload.mjs
+NoNewPrivileges=yes
+PrivateDevices=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/vectra-canary
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6

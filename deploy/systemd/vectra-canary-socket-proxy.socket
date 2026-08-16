@@ -1,0 +1,11 @@
+[Unit]
+Description=Unix socket ingress for isolated Vectra canary workloads
+
+[Socket]
+ListenStream=/run/vectra-canary-proxy.sock
+SocketUser=vectra-canary
+SocketGroup=vectra-canary
+SocketMode=0600
+
+[Install]
+WantedBy=sockets.target

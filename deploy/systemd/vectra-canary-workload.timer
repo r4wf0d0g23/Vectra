@@ -1,0 +1,11 @@
+[Unit]
+Description=Run representative Vectra canary workload every six hours
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=6h
+Persistent=true
+Unit=vectra-canary-workload.service
+
+[Install]
+WantedBy=timers.target

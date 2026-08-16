@@ -1,0 +1,36 @@
+import { execFileSync } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
+import { createHash, verify } from 'node:crypto';
+
+const unit = process.env.VECTRA_CANARY_WORKLOAD_UNIT ?? 'vectra-canary-workload.service';
+const logPath = process.env.VECTRA_CANARY_WORKLOAD_LOG ?? '/var/lib/vectra-canary/workloads.jsonl';
+const properties = execFileSync('systemctl', ['show', unit, '-p', 'PrivateNetwork', '-p', 'User', '-p', 'FragmentPath', '-p', 'ExecMainStatus'], { encoding: 'utf8' });
+const values = Object.fromEntries(properties.trim().split(/\r?\n/).map((line) => {
+  const index = line.indexOf('='); return [line.slice(0, index), line.slice(index + 1)];
+}));
+const privateNetwork = values.PrivateNetwork === 'yes';
+const systemScoped = values.FragmentPath?.startsWith('/etc/systemd/system/');
+const successful = values.ExecMainStatus === '0';
+const lines = (await readFile(logPath, 'utf8')).trim().split(/\r?\n/);
+const event = JSON.parse(lines.at(-1));
+const fresh = Date.now() - Date.parse(event.observed_at) < 15 * 60 * 1000;
+const eventAge = Date.now() - Date.parse(event.observed_at);
+const freshAndNotFuture = eventAge >= 0 && eventAge < 15 * 60 * 1000;
+const bypass = event.checks?.find((item) => item.name === 'direct-provider-egress-denied');
+const exactNetworkDenial = bypass?.ok === true && bypass?.detail?.error_code === 'ENETUNREACH';
+const appendOnlyTelemetry = execFileSync('lsattr', ['-d', logPath], { encoding: 'utf8' }).split(/\s+/)[0]?.includes('a') === true;
+const workloads = ['readiness', 'responses-nonstream', 'responses-stream'].every((name) => event.checks?.some((item) => item.name === name && item.ok));
+const socketActive = execFileSync('systemctl', ['is-active', 'vectra-canary-socket-proxy.socket'], { encoding: 'utf8' }).trim() === 'active';
+const proxyExec = execFileSync('systemctl', ['show', 'vectra-canary-socket-proxy.service', '-p', 'ExecStart'], { encoding: 'utf8' });
+const proxyDestinationExact = proxyExec.includes('127.0.0.1:18800');
+const attestLines = (await readFile('/var/lib/vectra-canary/attestations.jsonl', 'utf8')).trim().split(/\r?\n/);
+const attestation = JSON.parse(attestLines.at(-1));
+const signed = JSON.parse(attestation.payload);
+const eventSha256 = createHash('sha256').update(lines.at(-1)).digest('hex');
+const publicKey = await readFile('/etc/vectra-canary/attestation-public.pem', 'utf8');
+const attestationValid = signed.event_sha256 === eventSha256 && signed.invocation_id === event.invocation_id && typeof signed.invocation_id === 'string' && signed.invocation_id.length > 0 && verify(null, Buffer.from(attestation.payload), publicKey, Buffer.from(attestation.signature, 'base64'));
+const differentialProof = exactNetworkDenial && event.provider_reachable_via_vectra === true;
+const exactUser = values.User === 'vectra-canary';
+const result = { ok: Boolean(privateNetwork && socketActive && proxyDestinationExact && systemScoped && successful && freshAndNotFuture && exactUser && differentialProof && appendOnlyTelemetry && attestationValid && workloads), unit, user: values.User, exactUser, privateNetwork, socketActive, proxyDestinationExact, systemScoped, successful, freshAndNotFuture, exactNetworkDenial, differentialProof, appendOnlyTelemetry, attestationValid, workloads };
+console.log(JSON.stringify(result));
+if (!result.ok) process.exitCode = 1;
